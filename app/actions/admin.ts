@@ -566,6 +566,44 @@ export async function createCustomer(formData: FormData) {
   redirect(`/admin/customers/${customer.id}?created=1`);
 }
 
+export async function updateCustomer(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) redirect("/admin/customers?error=invalid");
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const phone = String(formData.get("phone") || "").trim();
+  const dob = String(formData.get("dob") || "");
+  const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
+  const locationId = Number(formData.get("locationId"));
+
+  const invalid =
+    !id ||
+    name.length < 2 ||
+    !email.includes("@") ||
+    !phone ||
+    !dob ||
+    isNaN(Date.parse(dob)) ||
+    !locationId;
+  if (invalid) {
+    redirect(`/admin/customers/${id}?error=invalid`);
+  }
+
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (existing && existing.id !== id) {
+    redirect(`/admin/customers/${id}?error=exists`);
+  }
+
+  await db
+    .update(users)
+    .set({ name, email, phone, dob, instagram, locationId })
+    .where(and(eq(users.id, id), eq(users.role, "customer")));
+
+  revalidatePath(`/admin/customers/${id}`);
+  revalidatePath("/admin/customers");
+  redirect(`/admin/customers/${id}?updated=1`);
+}
+
 export async function deleteCustomer(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));

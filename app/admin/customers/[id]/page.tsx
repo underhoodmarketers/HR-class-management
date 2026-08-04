@@ -1,32 +1,44 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { users, bookings } from "@/db/schema";
-import { formatDay, formatMoney, formatTime, formatDob } from "@/lib/utils";
+import { locations, users, bookings } from "@/db/schema";
+import { formatDay, formatMoney, formatTime } from "@/lib/utils";
 import { deleteCustomer } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
+import EditCustomerCard from "@/components/EditCustomerCard";
 
 export const dynamic = "force-dynamic";
+
+const errorMessages: Record<string, string> = {
+  invalid: "Fill in name, email, phone, date of birth, and preferred studio.",
+  exists: "Another account already uses that email.",
+};
 
 export default async function CustomerDetail({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { created?: string };
+  searchParams: { created?: string; updated?: string; error?: string };
 }) {
   const id = Number(params.id);
   if (isNaN(id)) notFound();
 
-  const customer = await db.query.users.findFirst({
-    where: eq(users.id, id),
-    with: {
-      memberships: { with: { package: true } },
-      signatures: true,
-      location: true,
-    },
-  });
+  const [customer, studios] = await Promise.all([
+    db.query.users.findFirst({
+      where: eq(users.id, id),
+      with: {
+        memberships: { with: { package: true } },
+        signatures: true,
+        location: true,
+      },
+    }),
+    db
+      .select()
+      .from(locations)
+      .where(and(eq(locations.active, true), isNull(locations.archivedAt))),
+  ]);
   if (!customer || customer.role !== "customer") notFound();
 
   const myBookings = await db.query.bookings.findMany({
@@ -35,6 +47,15 @@ export default async function CustomerDetail({
     orderBy: [desc(bookings.createdAt)],
     limit: 20,
   });
+
+  const banner =
+    searchParams.error && errorMessages[searchParams.error]
+      ? { tone: "error" as const, text: errorMessages[searchParams.error] }
+      : searchParams.created
+      ? { tone: "ok" as const, text: "Customer created." }
+      : searchParams.updated
+      ? { tone: "ok" as const, text: "Customer updated." }
+      : null;
 
   return (
     <div className="space-y-8">
@@ -52,39 +73,31 @@ export default async function CustomerDetail({
         />
       </div>
 
-      {searchParams.created ? (
-        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
-          Customer created.
+      {banner ? (
+        <div
+          className={
+            banner.tone === "error"
+              ? "rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              : "rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep"
+          }
+        >
+          {banner.text}
         </div>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card p-6">
-          <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">Contact</h2>
-          <dl className="space-y-2 text-sm">
-            <div><dt className="text-ink/40">Email</dt><dd>{customer.email}</dd></div>
-            <div><dt className="text-ink/40">Phone</dt><dd>{customer.phone || "—"}</dd></div>
-            <div><dt className="text-ink/40">Date of birth</dt><dd>{formatDob(customer.dob)}</dd></div>
-            <div><dt className="text-ink/40">Preferred studio</dt><dd>{customer.location?.name || "—"}</dd></div>
-            <div>
-              <dt className="text-ink/40">Instagram</dt>
-              <dd>
-                {customer.instagram ? (
-                  <a
-                    href={`https://instagram.com/${customer.instagram}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-magenta hover:underline"
-                  >
-                    @{customer.instagram}
-                  </a>
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-          </dl>
-        </div>
+        <EditCustomerCard
+          customer={{
+            id: customer.id,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+            dob: customer.dob,
+            instagram: customer.instagram,
+            locationId: customer.locationId,
+          }}
+          studios={studios}
+        />
 
         <div className="card p-6">
           <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">Waiver</h2>
