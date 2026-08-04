@@ -4,13 +4,16 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { users, bookings } from "@/db/schema";
 import { formatDay, formatMoney, formatTime, formatDob } from "@/lib/utils";
+import DeleteCustomerButton from "@/components/DeleteCustomerButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomerDetail({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { created?: string };
 }) {
   const id = Number(params.id);
   if (isNaN(id)) notFound();
@@ -33,11 +36,24 @@ export default async function CustomerDetail({
 
   return (
     <div className="space-y-8">
-      <div>
-        <Link href="/admin/customers" className="text-sm text-magenta">← All customers</Link>
-        <h1 className="mt-2 font-display text-3xl font-600">{customer.name}</h1>
-        <p className="text-sm text-ink/50">Joined {formatDay(customer.createdAt)}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Link href="/admin/customers" className="text-sm text-magenta">← All customers</Link>
+          <h1 className="mt-2 font-display text-3xl font-600">{customer.name}</h1>
+          <p className="text-sm text-ink/50">Joined {formatDay(customer.createdAt)}</p>
+        </div>
+        <DeleteCustomerButton
+          id={customer.id}
+          name={customer.name}
+          className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+        />
       </div>
+
+      {searchParams.created ? (
+        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
+          Customer created.
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card p-6">

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, sql, count, and, lt, gte, inArray } from "drizzle-orm";
+import { eq, sql, count, and, lt, gte, inArray, desc } from "drizzle-orm";
 import { db } from "@/db";
 import {
   bookings,
@@ -11,9 +11,12 @@ import {
   locations,
   packages,
   packageLocations,
+  users,
+  waiverSignatures,
   waiverTemplate,
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
+import { hashPassword } from "@/lib/auth";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -509,4 +512,63 @@ export async function togglePromoCode(formData: FormData) {
   if (!id) return;
   await stripe.promotionCodes.update(id, { active: !active });
   revalidatePath("/admin/promo-codes");
+}
+
+// ---------- Customers ----------
+export async function createCustomer(formData: FormData) {
+  await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const phone = String(formData.get("phone") || "").trim();
+  const dob = String(formData.get("dob") || "");
+  const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
+  const password = String(formData.get("password") || "");
+  const signedName = String(formData.get("signedName") || "").trim();
+
+  // Unlike self-signup, admin-added customers have no minimum age check —
+  // this is the intended path for enrolling a minor with a guardian present.
+  const invalid =
+    name.length < 2 ||
+    !email.includes("@") ||
+    !phone ||
+    !dob ||
+    isNaN(Date.parse(dob)) ||
+    password.length < 8 ||
+    !signedName;
+  if (invalid) {
+    redirect("/admin/customers/new?error=invalid");
+  }
+
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (existing) {
+    redirect("/admin/customers/new?error=exists");
+  }
+
+  const passwordHash = await hashPassword(password);
+  const [customer] = await db
+    .insert(users)
+    .values({ email, passwordHash, name, phone, dob, instagram, role: "customer" })
+    .returning();
+
+  const template = await db.query.waiverTemplate.findFirst({
+    orderBy: [desc(waiverTemplate.version)],
+  });
+  await db.insert(waiverSignatures).values({
+    userId: customer.id,
+    signedName,
+    version: template?.version ?? 1,
+  });
+
+  revalidatePath("/admin/customers");
+  redirect(`/admin/customers/${customer.id}?created=1`);
+}
+
+export async function deleteCustomer(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  // Cascades their memberships, bookings, and waiver signature via FK.
+  await db.delete(users).where(and(eq(users.id, id), eq(users.role, "customer")));
+  revalidatePath("/admin/customers");
+  redirect("/admin/customers?deleted=1");
 }

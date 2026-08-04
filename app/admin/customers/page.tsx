@@ -2,10 +2,15 @@ import Link from "next/link";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import DeleteCustomerButton from "@/components/DeleteCustomerButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: { deleted?: string };
+}) {
   const customers = await db.query.users.findMany({
     where: eq(users.role, "customer"),
     orderBy: [desc(users.createdAt)],
@@ -17,10 +22,21 @@ export default async function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-600">Customers</h1>
-        <p className="text-sm text-ink/50">{customers.length} members</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-600">Customers</h1>
+          <p className="text-sm text-ink/50">{customers.length} members</p>
+        </div>
+        <Link href="/admin/customers/new" className="btn-primary">
+          New customer
+        </Link>
       </div>
+
+      {searchParams.deleted ? (
+        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
+          Customer deleted.
+        </div>
+      ) : null}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -30,6 +46,7 @@ export default async function CustomersPage() {
               <th className="px-5 py-3 font-semibold">Contact</th>
               <th className="px-5 py-3 font-semibold">Membership</th>
               <th className="px-5 py-3 font-semibold">Waiver</th>
+              <th className="px-5 py-3 font-semibold"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink/5">
@@ -60,12 +77,19 @@ export default async function CustomersPage() {
                       <span className="badge bg-amber-100 text-amber-700">Missing</span>
                     )}
                   </td>
+                  <td className="px-5 py-3 text-right">
+                    <DeleteCustomerButton
+                      id={c.id}
+                      name={c.name}
+                      className="rounded-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                    />
+                  </td>
                 </tr>
               );
             })}
             {customers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-ink/40">
+                <td colSpan={5} className="px-5 py-8 text-center text-ink/40">
                   No customers yet.
                 </td>
               </tr>
