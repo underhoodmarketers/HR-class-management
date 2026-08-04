@@ -17,13 +17,15 @@ export default function BuyButton({
   billingType,
   label,
   className,
+  autoOpen,
 }: {
   packageId: number;
   billingType: BillingType;
   label: string;
   className: string;
+  autoOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(autoOpen));
   const [error, setError] = useState<string | null>(null);
 
   const fetchClientSecret = useCallback(async () => {

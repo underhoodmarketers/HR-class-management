@@ -12,10 +12,14 @@ export const dynamic = "force-dynamic";
 export default async function PortalPackages({
   searchParams,
 }: {
-  searchParams: { package?: string };
+  searchParams: { package?: string; billing?: string };
 }) {
   const session = await requireUser();
   const highlightId = Number(searchParams.package) || null;
+  const autoOpenBillingType =
+    searchParams.billing === "recurring" || searchParams.billing === "one_time"
+      ? searchParams.billing
+      : null;
 
   const [pkgs, activeMemberships] = await Promise.all([
     db.query.packages.findMany({
@@ -85,6 +89,7 @@ export default async function PortalPackages({
             perWeekLabel={variants[0].description || ""}
             highlighted={variants.some((p) => p.id === highlightId)}
             initialVariantId={highlightId ?? undefined}
+            autoOpenBillingType={autoOpenBillingType}
             variants={variants.map((p) => ({
               id: p.id,
               durationLabel: p.name.split(" — ")[1],
@@ -123,6 +128,7 @@ export default async function PortalPackages({
               billingType="one_time"
               label="Buy now"
               className="btn-primary mt-6 w-full"
+              autoOpen={p.id === highlightId && autoOpenBillingType === "one_time"}
             />
           </div>
         ))}

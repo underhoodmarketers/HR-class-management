@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import BuyButton from "@/components/BuyButton";
+import { type BillingType } from "@/app/actions/checkout";
 import { formatMoney } from "@/lib/utils";
 
 type Variant = {
@@ -20,12 +21,14 @@ export default function PackageTierCard({
   variants,
   highlighted,
   initialVariantId,
+  autoOpenBillingType,
 }: {
   tierName: string;
   perWeekLabel: string;
   variants: Variant[];
   highlighted?: boolean;
   initialVariantId?: number;
+  autoOpenBillingType?: BillingType | null;
 }) {
   const initialIndex = Math.max(
     0,
@@ -35,6 +38,7 @@ export default function PackageTierCard({
   const v = variants[selected];
   const savingsCents =
     v.recurringPriceCents != null ? v.priceCents - v.recurringPriceCents : null;
+  const isTarget = v.id === initialVariantId;
 
   return (
     <div className={`card flex flex-col p-6 ${highlighted ? "ring-2 ring-magenta" : ""}`}>
@@ -86,6 +90,7 @@ export default function PackageTierCard({
           billingType="one_time"
           label="Pay in full"
           className="btn-primary w-full"
+          autoOpen={isTarget && autoOpenBillingType === "one_time"}
         />
         {v.recurringPriceCents != null ? (
           <BuyButton
@@ -93,6 +98,7 @@ export default function PackageTierCard({
             billingType="recurring"
             label="Start autopay & save"
             className="btn-ghost w-full"
+            autoOpen={isTarget && autoOpenBillingType === "recurring"}
           />
         ) : null}
       </div>
