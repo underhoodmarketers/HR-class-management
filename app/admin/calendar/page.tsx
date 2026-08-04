@@ -210,6 +210,7 @@ export default async function CalendarPage({
                   type="datetime-local"
                   name="startsAt"
                   className="input"
+                  defaultValue={`${selectedDayKey}T09:00`}
                   required
                 />
               </div>
