@@ -18,6 +18,7 @@ export default async function CustomersPage({
     with: {
       memberships: { with: { package: true } },
       signatures: true,
+      location: true,
     },
   });
 
@@ -45,6 +46,7 @@ export default async function CustomersPage({
             <tr>
               <th className="px-5 py-3 font-semibold">Name</th>
               <th className="px-5 py-3 font-semibold">Contact</th>
+              <th className="px-5 py-3 font-semibold">Studio</th>
               <th className="px-5 py-3 font-semibold">Membership</th>
               <th className="px-5 py-3 font-semibold">Waiver</th>
               <th className="px-5 py-3 font-semibold"></th>
@@ -64,6 +66,7 @@ export default async function CustomersPage({
                     <div>{c.email}</div>
                     <div className="text-xs text-ink/40">{c.phone || "—"}</div>
                   </td>
+                  <td className="px-5 py-3 text-ink/60">{c.location?.name || "—"}</td>
                   <td className="px-5 py-3">
                     {active ? (
                       <span className="badge bg-magenta/10 text-magenta-deep">{active.package.name}</span>
@@ -91,7 +94,7 @@ export default async function CustomersPage({
             })}
             {customers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-ink/40">
+                <td colSpan={6} className="px-5 py-8 text-center text-ink/40">
                   No customers yet.
                 </td>
               </tr>

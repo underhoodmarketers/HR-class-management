@@ -7,10 +7,12 @@ import { SubmitButton } from "./SubmitButton";
 export function SignupForm({
   waiverTitle,
   waiverBody,
+  studios,
   next,
 }: {
   waiverTitle: string;
   waiverBody: string;
+  studios: { id: number; name: string }[];
   next?: string;
 }) {
   const [state, action] = useFormState(signupAction, null as { error?: string } | null);
@@ -40,6 +42,19 @@ export function SignupForm({
           <input id="dob" name="dob" type="date" required className="input" />
         </div>
         <div>
+          <label className="label" htmlFor="locationId">Preferred studio</label>
+          <select id="locationId" name="locationId" required defaultValue="" className="input">
+            <option value="" disabled>
+              Choose a studio
+            </option>
+            {studios.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
           <label className="label" htmlFor="instagram">Instagram <span className="font-400 text-ink/40">(optional)</span></label>
           <input id="instagram" name="instagram" placeholder="@yourhandle" className="input" />
         </div>

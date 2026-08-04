@@ -24,6 +24,7 @@ export default async function CustomerDetail({
     with: {
       memberships: { with: { package: true } },
       signatures: true,
+      location: true,
     },
   });
   if (!customer || customer.role !== "customer") notFound();
@@ -64,6 +65,7 @@ export default async function CustomerDetail({
             <div><dt className="text-ink/40">Email</dt><dd>{customer.email}</dd></div>
             <div><dt className="text-ink/40">Phone</dt><dd>{customer.phone || "—"}</dd></div>
             <div><dt className="text-ink/40">Date of birth</dt><dd>{formatDob(customer.dob)}</dd></div>
+            <div><dt className="text-ink/40">Preferred studio</dt><dd>{customer.location?.name || "—"}</dd></div>
             <div>
               <dt className="text-ink/40">Instagram</dt>
               <dd>

@@ -24,6 +24,9 @@ export const users = pgTable("users", {
   dob: date("dob"),
   instagram: varchar("instagram", { length: 60 }),
   notes: text("notes"),
+  // Preferred home studio, collected at signup. Required for new customer
+  // signups at the app level; nullable here since older accounts predate it.
+  locationId: integer("location_id").references(() => locations.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -173,11 +176,12 @@ export const waiverSignatures = pgTable("waiver_signatures", {
 });
 
 // ---------- Relations ----------
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   memberships: many(memberships),
   bookings: many(bookings),
   signatures: many(waiverSignatures),
   instructorLocations: many(instructorLocations),
+  location: one(locations, { fields: [users.locationId], references: [locations.id] }),
 }));
 
 export const instructorLocationsRelations = relations(instructorLocations, ({ one }) => ({

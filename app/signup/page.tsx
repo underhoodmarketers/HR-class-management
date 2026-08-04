@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { waiverTemplate } from "@/db/schema";
+import { locations, waiverTemplate } from "@/db/schema";
 import { SignupForm } from "@/components/SignupForm";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +11,13 @@ export default async function SignupPage({
 }: {
   searchParams: { next?: string };
 }) {
-  const waiver = await db.query.waiverTemplate.findFirst({
-    orderBy: [desc(waiverTemplate.version)],
-  });
+  const [waiver, studios] = await Promise.all([
+    db.query.waiverTemplate.findFirst({ orderBy: [desc(waiverTemplate.version)] }),
+    db
+      .select()
+      .from(locations)
+      .where(and(eq(locations.active, true), isNull(locations.archivedAt))),
+  ]);
 
   return (
     <main className="grid min-h-screen place-items-center bg-cream px-6 py-12">
@@ -33,6 +37,7 @@ export default async function SignupPage({
               waiver?.body ??
               "By joining Holistic Rhythm you acknowledge the physical nature of dance fitness and participate at your own risk."
             }
+            studios={studios}
             next={searchParams.next}
           />
         </div>

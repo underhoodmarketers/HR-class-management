@@ -1,19 +1,27 @@
 import Link from "next/link";
+import { and, eq, isNull } from "drizzle-orm";
+import { db } from "@/db";
+import { locations } from "@/db/schema";
 import { createCustomer } from "@/app/actions/admin";
 
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  invalid: "Fill in name, email, phone, date of birth, an 8+ character password, and the waiver signer's name.",
+  invalid:
+    "Fill in name, email, phone, date of birth, preferred studio, an 8+ character password, and the waiver signer's name.",
   exists: "An account with that email already exists.",
 };
 
-export default function NewCustomerPage({
+export default async function NewCustomerPage({
   searchParams,
 }: {
   searchParams: { error?: string };
 }) {
   const error = searchParams.error ? errorMessages[searchParams.error] : null;
+  const studios = await db
+    .select()
+    .from(locations)
+    .where(and(eq(locations.active, true), isNull(locations.archivedAt)));
 
   return (
     <div className="space-y-6">
@@ -55,11 +63,24 @@ export default function NewCustomerPage({
               <input name="dob" type="date" required className="input" />
             </div>
             <div>
-              <label className="label">
-                Instagram <span className="font-400 text-ink/40">(optional)</span>
-              </label>
-              <input name="instagram" placeholder="@yourhandle" className="input" />
+              <label className="label">Preferred studio</label>
+              <select name="locationId" required defaultValue="" className="input">
+                <option value="" disabled>
+                  Choose a studio
+                </option>
+                {studios.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
             </div>
+          </div>
+          <div>
+            <label className="label">
+              Instagram <span className="font-400 text-ink/40">(optional)</span>
+            </label>
+            <input name="instagram" placeholder="@yourhandle" className="input" />
           </div>
           <div>
             <label className="label">Temporary password</label>

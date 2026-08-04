@@ -523,6 +523,7 @@ export async function createCustomer(formData: FormData) {
   const phone = String(formData.get("phone") || "").trim();
   const dob = String(formData.get("dob") || "");
   const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
+  const locationId = Number(formData.get("locationId"));
   const password = String(formData.get("password") || "");
   const signedName = String(formData.get("signedName") || "").trim();
 
@@ -534,6 +535,7 @@ export async function createCustomer(formData: FormData) {
     !phone ||
     !dob ||
     isNaN(Date.parse(dob)) ||
+    !locationId ||
     password.length < 8 ||
     !signedName;
   if (invalid) {
@@ -548,7 +550,7 @@ export async function createCustomer(formData: FormData) {
   const passwordHash = await hashPassword(password);
   const [customer] = await db
     .insert(users)
-    .values({ email, passwordHash, name, phone, dob, instagram, role: "customer" })
+    .values({ email, passwordHash, name, phone, dob, instagram, locationId, role: "customer" })
     .returning();
 
   const template = await db.query.waiverTemplate.findFirst({

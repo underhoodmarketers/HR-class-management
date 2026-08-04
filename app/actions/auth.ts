@@ -31,6 +31,10 @@ const signupSchema = z.object({
       return d <= cutoff;
     }, "You must be 18 or older to create an account. Please contact the studio to enroll a minor."),
   instagram: z.string().optional(),
+  locationId: z
+    .string()
+    .min(1, "Choose your preferred studio.")
+    .refine((v) => !Number.isNaN(Number(v)), "Choose your preferred studio."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   signedName: z.string().min(2, "Type your name to sign the waiver."),
   agree: z.string().refine((v) => v === "on", "You must accept the waiver to join."),
@@ -67,6 +71,7 @@ export async function signupAction(_prev: unknown, formData: FormData) {
       phone: data.phone,
       dob: data.dob,
       instagram: data.instagram?.trim().replace(/^@/, "") || null,
+      locationId: Number(data.locationId),
       role: "customer",
     })
     .returning();
