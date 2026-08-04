@@ -9,6 +9,7 @@ const nav = [
   { href: "/admin/calendar", label: "Calendar" },
   { href: "/admin/customers", label: "Customers" },
   { href: "/admin/packages", label: "Packages" },
+  { href: "/admin/promo-codes", label: "Promo codes" },
   { href: "/admin/locations", label: "Studios & classes" },
   { href: "/admin/waiver", label: "Waiver" },
 ];

@@ -23,6 +23,7 @@ import {
   withStudioClock,
 } from "@/lib/utils";
 import { randomUUID } from "crypto";
+import { stripe, stripeConfigured } from "@/lib/stripe";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -441,4 +442,71 @@ export async function updateWaiver(formData: FormData) {
     await db.insert(waiverTemplate).values({ title, body, version: 1 });
   }
   revalidatePath("/admin/waiver");
+}
+
+// ---------- Promo codes (Stripe coupons + promotion codes) ----------
+export async function createPromoCode(formData: FormData) {
+  await requireAdmin();
+  if (!stripeConfigured()) {
+    redirect("/admin/promo-codes?error=stripe_not_configured");
+  }
+
+  const code = String(formData.get("code") || "").trim().toUpperCase();
+  const discountType = formData.get("discountType") === "amount" ? "amount" : "percent";
+  const percentOff = Number(formData.get("percentOff") || 0);
+  const amountOff = Number(formData.get("amountOff") || 0); // dollars
+  const duration =
+    formData.get("duration") === "forever"
+      ? "forever"
+      : formData.get("duration") === "repeating"
+      ? "repeating"
+      : "once";
+  const durationMonths = Number(formData.get("durationMonths") || 0);
+  const expiresAtValue = String(formData.get("expiresAt") || "");
+  const maxRedemptions = Number(formData.get("maxRedemptions") || 0);
+
+  const invalid =
+    !code ||
+    (discountType === "percent" && (!percentOff || percentOff <= 0 || percentOff > 100)) ||
+    (discountType === "amount" && (!amountOff || amountOff <= 0)) ||
+    (duration === "repeating" && (!durationMonths || durationMonths < 1));
+  if (invalid) {
+    redirect("/admin/promo-codes?error=invalid");
+  }
+
+  try {
+    const coupon = await stripe.coupons.create({
+      ...(discountType === "percent"
+        ? { percent_off: percentOff }
+        : { amount_off: Math.round(amountOff * 100), currency: "usd" }),
+      duration,
+      ...(duration === "repeating" ? { duration_in_months: durationMonths } : {}),
+      name: code,
+    });
+
+    await stripe.promotionCodes.create({
+      coupon: coupon.id,
+      code,
+      active: true,
+      ...(expiresAtValue
+        ? { expires_at: Math.floor(fromStudioTime(`${expiresAtValue}T23:59`).getTime() / 1000) }
+        : {}),
+      ...(maxRedemptions > 0 ? { max_redemptions: maxRedemptions } : {}),
+    });
+  } catch {
+    // Most common cause: that code already exists on another active promotion.
+    redirect("/admin/promo-codes?error=duplicate");
+  }
+
+  revalidatePath("/admin/promo-codes");
+  redirect("/admin/promo-codes?created=1");
+}
+
+export async function togglePromoCode(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  const active = formData.get("active") === "true";
+  if (!id) return;
+  await stripe.promotionCodes.update(id, { active: !active });
+  revalidatePath("/admin/promo-codes");
 }
