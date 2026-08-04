@@ -47,6 +47,7 @@ async function main() {
       email: adminEmail,
       passwordHash,
       name: "Pre",
+      dob: process.env.SEED_ADMIN_DOB || "1990-01-01",
       role: "admin",
     })
     .onConflictDoNothing();

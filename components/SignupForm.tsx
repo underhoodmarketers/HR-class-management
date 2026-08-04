@@ -33,8 +33,12 @@ export function SignupForm({
           <input id="password" name="password" type="password" required className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="emergencyContact">Emergency contact</label>
-          <input id="emergencyContact" name="emergencyContact" placeholder="Name & phone" className="input" />
+          <label className="label" htmlFor="dob">Date of birth</label>
+          <input id="dob" name="dob" type="date" required className="input" />
+        </div>
+        <div>
+          <label className="label" htmlFor="instagram">Instagram <span className="font-400 text-ink/40">(optional)</span></label>
+          <input id="instagram" name="instagram" placeholder="@yourhandle" className="input" />
         </div>
       </div>
 

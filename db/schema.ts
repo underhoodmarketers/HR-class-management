@@ -4,6 +4,7 @@ import {
   text,
   varchar,
   timestamp,
+  date,
   integer,
   boolean,
   primaryKey,
@@ -19,7 +20,8 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 40 }),
   role: varchar("role", { length: 16 }).notNull().default("customer"), // "admin" | "customer"
-  emergencyContact: varchar("emergency_contact", { length: 200 }),
+  dob: date("dob").notNull(),
+  instagram: varchar("instagram", { length: 60 }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

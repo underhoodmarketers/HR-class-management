@@ -32,3 +32,21 @@ export function formatDateTimeLocalValue(d: Date) {
     d.getHours()
   )}:${pad(d.getMinutes())}`;
 }
+
+export function formatDob(dob: string | null) {
+  if (!dob) return "—";
+  // dob is stored as a plain "yyyy-mm-dd" date with no timezone.
+  const [y, m, d] = dob.split("-").map(Number);
+  if (!y || !m || !d) return dob;
+  const label = new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  const hadBirthday =
+    today.getMonth() + 1 > m || (today.getMonth() + 1 === m && today.getDate() >= d);
+  if (!hadBirthday) age -= 1;
+  return `${label} (${age})`;
+}

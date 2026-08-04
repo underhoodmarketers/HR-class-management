@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { users, bookings } from "@/db/schema";
-import { formatDay, formatMoney, formatTime } from "@/lib/utils";
+import { formatDay, formatMoney, formatTime, formatDob } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,24 @@ export default async function CustomerDetail({
           <dl className="space-y-2 text-sm">
             <div><dt className="text-ink/40">Email</dt><dd>{customer.email}</dd></div>
             <div><dt className="text-ink/40">Phone</dt><dd>{customer.phone || "—"}</dd></div>
-            <div><dt className="text-ink/40">Emergency</dt><dd>{customer.emergencyContact || "—"}</dd></div>
+            <div><dt className="text-ink/40">Date of birth</dt><dd>{formatDob(customer.dob)}</dd></div>
+            <div>
+              <dt className="text-ink/40">Instagram</dt>
+              <dd>
+                {customer.instagram ? (
+                  <a
+                    href={`https://instagram.com/${customer.instagram}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-magenta hover:underline"
+                  >
+                    @{customer.instagram}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
           </dl>
         </div>
 
