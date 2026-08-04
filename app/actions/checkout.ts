@@ -61,6 +61,7 @@ export async function createEmbeddedCheckout(
           ],
           subscription_data: { metadata },
           metadata,
+          allow_promotion_codes: true,
           redirect_on_completion: "if_required",
           return_url: `${baseUrl}/portal?purchase=success`,
         }
@@ -82,6 +83,7 @@ export async function createEmbeddedCheckout(
             },
           ],
           metadata,
+          allow_promotion_codes: true,
           redirect_on_completion: "if_required",
           return_url: `${baseUrl}/portal?purchase=success`,
         }
