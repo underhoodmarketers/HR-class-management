@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     const checkout = event.data.object as Stripe.Checkout.Session;
     const userId = Number(checkout.metadata?.userId);
     const packageId = Number(checkout.metadata?.packageId);
+    const billingType = checkout.metadata?.billingType === "recurring" ? "recurring" : "one_time";
 
     if (userId && packageId) {
       // Idempotency: skip if we've already recorded this checkout.
@@ -57,7 +58,55 @@ export async function POST(req: NextRequest) {
             startsAt,
             endsAt,
             stripeSessionId: checkout.id,
+            stripeSubscriptionId:
+              typeof checkout.subscription === "string" ? checkout.subscription : null,
+            billingType,
           });
+        }
+      }
+    }
+  }
+
+  // Subscription renewals: the first invoice for a new subscription is
+  // covered by checkout.session.completed above, so only act on later
+  // billing cycles here to avoid granting the first period twice.
+  if (event.type === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+    if (invoice.billing_reason === "subscription_cycle" && invoice.subscription) {
+      const subscriptionId =
+        typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
+
+      // Idempotency: skip if we've already recorded this invoice.
+      const already = await db.query.memberships.findFirst({
+        where: eq(memberships.stripeSessionId, invoice.id),
+      });
+
+      if (!already) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const userId = Number(subscription.metadata?.userId);
+        const packageId = Number(subscription.metadata?.packageId);
+
+        if (userId && packageId) {
+          const pkg = await db.query.packages.findFirst({
+            where: eq(packages.id, packageId),
+          });
+          if (pkg) {
+            const startsAt = new Date();
+            const endsAt = new Date(
+              startsAt.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000
+            );
+            await db.insert(memberships).values({
+              userId,
+              packageId,
+              status: "active",
+              creditsRemaining: pkg.credits,
+              startsAt,
+              endsAt,
+              stripeSessionId: invoice.id,
+              stripeSubscriptionId: subscriptionId,
+              billingType: "recurring",
+            });
+          }
         }
       }
     }

@@ -54,6 +54,19 @@ export default async function PackagesPage() {
               <label className="label">Or number of class credits</label>
               <input type="number" name="credits" min={1} className="input" placeholder="e.g. 10" />
             </div>
+            <div className="grid grid-cols-2 gap-3 rounded-xl border border-ink/10 p-3">
+              <div className="col-span-2 text-xs font-medium text-ink/50">
+                Autopay (optional) — leave blank for one-time only
+              </div>
+              <div>
+                <label className="label">Autopay price (USD)</label>
+                <input type="number" name="recurringPrice" step="0.01" min="0" className="input" placeholder="56" />
+              </div>
+              <div>
+                <label className="label">Bills every (weeks)</label>
+                <input type="number" name="billingWeeks" min={1} max={52} className="input" placeholder="4" />
+              </div>
+            </div>
             <div>
               <label className="label">Studios included</label>
               <div className="space-y-1.5 rounded-xl border border-ink/10 p-3">
@@ -87,6 +100,9 @@ export default async function PackagesPage() {
                   </p>
                   <p className="text-sm text-ink/50">
                     {formatMoney(p.priceCents)} · {p.credits ? `${p.credits} classes` : "Unlimited"} · {p.durationDays} days
+                    {p.recurringPriceCents && p.billingWeeks ? (
+                      <> · autopay {formatMoney(p.recurringPriceCents)}/{p.billingWeeks}wk</>
+                    ) : null}
                   </p>
                   <p className="mt-1 text-xs text-ink/40">
                     {p.locations.length

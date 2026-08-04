@@ -76,6 +76,10 @@ export const packages = pgTable("packages", {
   credits: integer("credits"),
   durationDays: integer("duration_days").notNull().default(30),
   active: boolean("active").notNull().default(true),
+  // Autopay option: charge recurringPriceCents every billingWeeks, renewing
+  // the same credits/duration. Null on either means no autopay option.
+  recurringPriceCents: integer("recurring_price_cents"),
+  billingWeeks: integer("billing_weeks"),
 });
 
 // Which locations a package grants access to. No rows = all locations.
@@ -105,7 +109,12 @@ export const memberships = pgTable("memberships", {
   creditsRemaining: integer("credits_remaining"), // null = unlimited
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  // Checkout session id (one-time purchases) or invoice id (subscription
+  // renewals) that created this row — kept unique so webhook retries can't
+  // double-grant credits.
   stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  billingType: varchar("billing_type", { length: 16 }).notNull().default("one_time"), // one_time | recurring
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

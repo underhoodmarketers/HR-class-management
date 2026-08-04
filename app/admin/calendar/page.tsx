@@ -169,17 +169,11 @@ export default async function CalendarPage({
                 />
               </div>
               <div>
-                <label className="label">Repeat weekly for</label>
-                <input
-                  type="number"
-                  name="repeatWeeks"
-                  defaultValue={1}
-                  min={1}
-                  max={52}
-                  className="input"
-                />
+                <label className="label">Repeat weekly until (optional)</label>
+                <input type="date" name="endDate" className="input" />
                 <p className="mt-1 text-xs text-ink/40">
-                  Number of weeks. Set to 8 for the next 8 weeks.
+                  Leave blank to schedule only this date. Otherwise, repeats
+                  weekly through the date you pick here.
                 </p>
               </div>
 

@@ -84,10 +84,10 @@ export async function createSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
-  const repeatWeeks = Math.max(
-    1,
-    Math.min(52, Number(formData.get("repeatWeeks") || 1))
-  );
+
+  // Optional: repeat weekly through this date. Blank = just the picked date(s), once.
+  const endDateValue = String(formData.get("endDate") || "");
+  const repeatUntil = endDateValue ? fromStudioTime(`${endDateValue}T23:59`) : null;
 
   // Optional extra weekdays: a series can run e.g. Mon + Wed each week.
   const extraDays = formData
@@ -95,7 +95,13 @@ export async function createSession(formData: FormData) {
     .map((v) => Number(v))
     .filter((n) => !Number.isNaN(n) && n >= 0 && n <= 6);
 
-  if (!classTypeId || !locationId || isNaN(start.getTime())) {
+  if (
+    !classTypeId ||
+    !locationId ||
+    isNaN(start.getTime()) ||
+    (endDateValue && isNaN(repeatUntil!.getTime())) ||
+    (repeatUntil && repeatUntil.getTime() < start.getTime())
+  ) {
     redirect("/admin/calendar?error=invalid");
   }
 
@@ -103,16 +109,18 @@ export async function createSession(formData: FormData) {
   // The picked date's own weekday is always included.
   const days = Array.from(new Set([startDay, ...extraDays])).sort();
 
-  const isSeries = repeatWeeks > 1 || days.length > 1;
-  const seriesId = isSeries ? randomUUID().slice(0, 36) : null;
+  // Cap at a year of weekly classes so a mistyped far-future end date can't
+  // create an unbounded number of rows.
+  const maxWeeks = repeatUntil ? 52 : 1;
 
   const rows = [];
-  for (let week = 0; week < repeatWeeks; week++) {
+  for (let week = 0; week < maxWeeks; week++) {
     for (const day of days) {
       // Offset from the anchor day, keeping within the same week block.
       const dayOffset = day - startDay;
       const s = addStudioDays(addStudioWeeks(start, week), dayOffset);
       if (Number.isNaN(s.getTime())) continue;
+      if (repeatUntil && s.getTime() > repeatUntil.getTime()) continue;
       rows.push({
         classTypeId,
         locationId,
@@ -120,9 +128,15 @@ export async function createSession(formData: FormData) {
         endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
         capacity,
         instructor,
-        seriesId,
+        seriesId: null as string | null,
       });
     }
+  }
+
+  const isSeries = rows.length > 1;
+  if (isSeries) {
+    const seriesId = randomUUID().slice(0, 36);
+    for (const row of rows) row.seriesId = seriesId;
   }
 
   rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
@@ -364,11 +378,24 @@ export async function createPackage(formData: FormData) {
   const durationDays = Number(formData.get("durationDays") || 30);
   const locationIds = formData.getAll("locationIds").map((v) => Number(v));
 
+  // Autopay is optional: both fields must be set together, or neither.
+  const recurringPrice = Number(formData.get("recurringPrice") || 0);
+  const billingWeeks = Number(formData.get("billingWeeks") || 0);
+  const recurringPriceCents = recurringPrice > 0 && billingWeeks > 0 ? Math.round(recurringPrice * 100) : null;
+
   if (!name || priceCents < 0) return;
 
   const [pkg] = await db
     .insert(packages)
-    .values({ name, description, priceCents, credits, durationDays })
+    .values({
+      name,
+      description,
+      priceCents,
+      credits,
+      durationDays,
+      recurringPriceCents,
+      billingWeeks: recurringPriceCents ? billingWeeks : null,
+    })
     .returning();
 
   if (locationIds.length) {
