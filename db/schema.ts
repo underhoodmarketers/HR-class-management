@@ -32,6 +32,7 @@ export const locations = pgTable("locations", {
   name: varchar("name", { length: 160 }).notNull(),
   address: text("address"),
   active: boolean("active").notNull().default(true),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 // ---------- Class types (e.g., Bollywood Zumba, Strength) ----------

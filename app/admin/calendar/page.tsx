@@ -1,4 +1,4 @@
-import { and, gte, eq } from "drizzle-orm";
+import { and, gte, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, classTypes, locations } from "@/db/schema";
 import { createSession, cancelSession, deleteSession } from "@/app/actions/admin";
@@ -10,7 +10,7 @@ export default async function CalendarPage() {
   const now = new Date();
   const [types, studios, sessions] = await Promise.all([
     db.select().from(classTypes),
-    db.select().from(locations).where(eq(locations.active, true)),
+    db.select().from(locations).where(and(eq(locations.active, true), isNull(locations.archivedAt))),
     db.query.classSessions.findMany({
       where: gte(classSessions.startsAt, new Date(now.getTime() - 12 * 60 * 60 * 1000)),
       with: { classType: true, location: true, bookings: true },

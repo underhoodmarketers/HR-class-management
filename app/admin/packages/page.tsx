@@ -1,3 +1,4 @@
+import { isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { locations } from "@/db/schema";
 import { createPackage, togglePackage } from "@/app/actions/admin";
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PackagesPage() {
   const [studios, pkgs] = await Promise.all([
-    db.select().from(locations),
+    db.select().from(locations).where(isNull(locations.archivedAt)),
     db.query.packages.findMany({
       with: { locations: { with: { location: true } } },
       orderBy: (p, { desc }) => [desc(p.active), p.priceCents],
