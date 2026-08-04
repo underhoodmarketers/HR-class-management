@@ -208,6 +208,10 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
   }),
 }));
 
+export const waiverSignaturesRelations = relations(waiverSignatures, ({ one }) => ({
+  user: one(users, { fields: [waiverSignatures.userId], references: [users.id] }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type ClassSession = typeof classSessions.$inferSelect;
 export type Package = typeof packages.$inferSelect;
