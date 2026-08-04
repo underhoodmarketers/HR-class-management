@@ -18,18 +18,26 @@ export default function PackageTierCard({
   tierName,
   perWeekLabel,
   variants,
+  highlighted,
+  initialVariantId,
 }: {
   tierName: string;
   perWeekLabel: string;
   variants: Variant[];
+  highlighted?: boolean;
+  initialVariantId?: number;
 }) {
-  const [selected, setSelected] = useState(0);
+  const initialIndex = Math.max(
+    0,
+    variants.findIndex((v) => v.id === initialVariantId)
+  );
+  const [selected, setSelected] = useState(initialIndex);
   const v = variants[selected];
   const savingsCents =
     v.recurringPriceCents != null ? v.priceCents - v.recurringPriceCents : null;
 
   return (
-    <div className="card flex flex-col p-6">
+    <div className={`card flex flex-col p-6 ${highlighted ? "ring-2 ring-magenta" : ""}`}>
       <p className="font-display text-xl font-600">{tierName}</p>
       <p className="mt-1 text-sm text-ink/50">{perWeekLabel}</p>
 

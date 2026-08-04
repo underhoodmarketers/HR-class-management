@@ -7,7 +7,13 @@ import BuyButton from "@/components/BuyButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function PortalPackages() {
+export default async function PortalPackages({
+  searchParams,
+}: {
+  searchParams: { package?: string };
+}) {
+  const highlightId = Number(searchParams.package) || null;
+
   const pkgs = await db.query.packages.findMany({
     where: eq(packages.active, true),
     with: { locations: { with: { location: true } } },
@@ -45,6 +51,8 @@ export default async function PortalPackages() {
             key={tier}
             tierName={tier}
             perWeekLabel={variants[0].description || ""}
+            highlighted={variants.some((p) => p.id === highlightId)}
+            initialVariantId={highlightId ?? undefined}
             variants={variants.map((p) => ({
               id: p.id,
               durationLabel: p.name.split(" — ")[1],
@@ -58,7 +66,12 @@ export default async function PortalPackages() {
         ))}
 
         {standalone.map((p) => (
-          <div key={p.id} className="card flex flex-col p-6">
+          <div
+            key={p.id}
+            className={`card flex flex-col p-6 ${
+              p.id === highlightId ? "ring-2 ring-magenta" : ""
+            }`}
+          >
             <p className="font-display text-xl font-600">{p.name}</p>
             <p className="mt-1 text-sm text-ink/50">{p.description}</p>
             <p className="mt-4 font-display text-3xl font-700 text-magenta">

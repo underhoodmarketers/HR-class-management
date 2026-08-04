@@ -7,14 +7,17 @@ import { SubmitButton } from "./SubmitButton";
 export function SignupForm({
   waiverTitle,
   waiverBody,
+  next,
 }: {
   waiverTitle: string;
   waiverBody: string;
+  next?: string;
 }) {
   const [state, action] = useFormState(signupAction, null as { error?: string } | null);
 
   return (
     <form action={action} className="space-y-4">
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="label" htmlFor="name">Full name</label>

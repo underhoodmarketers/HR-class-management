@@ -34,7 +34,14 @@ const signupSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters."),
   signedName: z.string().min(2, "Type your name to sign the waiver."),
   agree: z.string().refine((v) => v === "on", "You must accept the waiver to join."),
+  next: z.string().optional(),
 });
+
+// Only allow same-site relative paths — rejects protocol-relative URLs
+// (e.g. "//evil.com") that browsers would treat as an external redirect.
+function safeNext(next: string | undefined) {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+}
 
 export async function signupAction(_prev: unknown, formData: FormData) {
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
@@ -81,7 +88,7 @@ export async function signupAction(_prev: unknown, formData: FormData) {
     email: user.email,
   });
 
-  redirect("/portal");
+  redirect(safeNext(data.next) ?? "/portal");
 }
 
 const loginSchema = z.object({
@@ -111,7 +118,7 @@ export async function loginAction(_prev: unknown, formData: FormData) {
     email: user.email,
   });
 
-  const dest = next && next.startsWith("/") ? next : user.role === "admin" ? "/admin" : "/portal";
+  const dest = safeNext(next) ?? (user.role === "admin" ? "/admin" : "/portal");
   redirect(dest);
 }
 

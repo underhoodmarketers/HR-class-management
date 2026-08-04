@@ -6,7 +6,11 @@ import { SignupForm } from "@/components/SignupForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: { next?: string };
+}) {
   const waiver = await db.query.waiverTemplate.findFirst({
     orderBy: [desc(waiverTemplate.version)],
   });
@@ -29,11 +33,19 @@ export default async function SignupPage() {
               waiver?.body ??
               "By joining Holistic Rhythm you acknowledge the physical nature of dance fitness and participate at your own risk."
             }
+            next={searchParams.next}
           />
         </div>
         <p className="mt-6 text-center text-sm text-ink/60">
           Already a member?{" "}
-          <Link href="/login" className="font-semibold text-magenta">
+          <Link
+            href={
+              searchParams.next
+                ? `/login?next=${encodeURIComponent(searchParams.next)}`
+                : "/login"
+            }
+            className="font-semibold text-magenta"
+          >
             Sign in
           </Link>
         </p>

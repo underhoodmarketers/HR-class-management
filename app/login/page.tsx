@@ -21,7 +21,14 @@ export default function LoginPage({
         </div>
         <p className="mt-6 text-center text-sm text-ink/60">
           New here?{" "}
-          <Link href="/signup" className="font-semibold text-magenta">
+          <Link
+            href={
+              searchParams.next
+                ? `/signup?next=${encodeURIComponent(searchParams.next)}`
+                : "/signup"
+            }
+            className="font-semibold text-magenta"
+          >
             Create your profile
           </Link>
         </p>
