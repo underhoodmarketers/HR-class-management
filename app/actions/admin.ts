@@ -106,19 +106,25 @@ export async function createSession(formData: FormData) {
   }
 
   const startDay = studioWeekday(start);
-  // The picked date's own weekday is always included.
-  const days = Array.from(new Set([startDay, ...extraDays])).sort();
+  // If specific weekdays were checked, classes run only on those days —
+  // NOT also on whatever weekday the start date happens to fall on. With
+  // nothing checked, fall back to the start date's own weekday.
+  const days = extraDays.length > 0 ? Array.from(new Set(extraDays)).sort() : [startDay];
 
   // Cap at a year of weekly classes so a mistyped far-future end date can't
   // create an unbounded number of rows.
   const maxWeeks = repeatUntil ? 52 : 1;
 
   const rows = [];
-  for (let week = 0; week < maxWeeks; week++) {
-    for (const day of days) {
-      // Offset from the anchor day, keeping within the same week block.
-      const dayOffset = day - startDay;
-      const s = addStudioDays(addStudioWeeks(start, week), dayOffset);
+  for (const day of days) {
+    // Roll forward (never backward) from the start date to that weekday's
+    // first occurrence, e.g. picking a Monday start for a Tuesday class
+    // aligns the first class to the following Tuesday, not the Monday.
+    const forwardOffset = (day - startDay + 7) % 7;
+    const firstOccurrence = addStudioDays(start, forwardOffset);
+
+    for (let week = 0; week < maxWeeks; week++) {
+      const s = addStudioWeeks(firstOccurrence, week);
       if (Number.isNaN(s.getTime())) continue;
       if (repeatUntil && s.getTime() > repeatUntil.getTime()) continue;
       rows.push({

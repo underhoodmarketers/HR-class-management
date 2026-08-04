@@ -17,7 +17,7 @@ export default function WeekdayPicker() {
 
   return (
     <div>
-      <label className="label">Also repeat on (optional)</label>
+      <label className="label">Recurs on (optional)</label>
       <div className="flex flex-wrap gap-1.5">
         {DAYS.map((d) => {
           const on = selected.includes(d.value);
@@ -45,8 +45,10 @@ export default function WeekdayPicker() {
         <input key={v} type="hidden" name="weekdays" value={v} />
       ))}
       <p className="mt-1.5 text-xs text-ink/40">
-        The day of your start date is always included. Add days here to run the
-        same class more than once a week.
+        Leave blank to use your start date's own weekday. Pick day(s) to
+        schedule only on those weekdays — if your start date lands on a
+        different day, the first class rolls forward to the next matching one
+        (e.g. picking Tue with a Monday start begins the following Tuesday).
       </p>
     </div>
   );
