@@ -29,7 +29,7 @@ export function SignupForm({
         </div>
         <div>
           <label className="label" htmlFor="phone">Phone</label>
-          <input id="phone" name="phone" className="input" />
+          <input id="phone" name="phone" type="tel" required className="input" />
         </div>
         <div>
           <label className="label" htmlFor="password">Password</label>

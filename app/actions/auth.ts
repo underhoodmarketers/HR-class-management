@@ -15,7 +15,7 @@ import {
 const signupSchema = z.object({
   name: z.string().min(2, "Enter your full name."),
   email: z.string().email("Enter a valid email."),
-  phone: z.string().optional(),
+  phone: z.string().min(1, "Enter your phone number."),
   dob: z
     .string()
     .min(1, "Enter your date of birth.")
@@ -27,9 +27,9 @@ const signupSchema = z.object({
     .refine((v) => {
       const d = new Date(v);
       const cutoff = new Date();
-      cutoff.setFullYear(cutoff.getFullYear() - 16);
+      cutoff.setFullYear(cutoff.getFullYear() - 18);
       return d <= cutoff;
-    }, "You must be 16 or older to create an account. Please contact the studio to enroll a minor."),
+    }, "You must be 18 or older to create an account. Please contact the studio to enroll a minor."),
   instagram: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters."),
   signedName: z.string().min(2, "Type your name to sign the waiver."),
@@ -64,7 +64,7 @@ export async function signupAction(_prev: unknown, formData: FormData) {
       email: data.email.toLowerCase(),
       passwordHash,
       name: data.name,
-      phone: data.phone || null,
+      phone: data.phone,
       dob: data.dob,
       instagram: data.instagram?.trim().replace(/^@/, "") || null,
       role: "customer",
