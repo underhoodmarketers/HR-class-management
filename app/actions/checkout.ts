@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { packages } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
+import { stripeFeeCents } from "@/lib/utils";
 
 export type BillingType = "one_time" | "recurring";
 
@@ -58,6 +59,15 @@ export async function createEmbeddedCheckout(
                 },
               },
             },
+            {
+              quantity: 1,
+              price_data: {
+                currency: "usd",
+                unit_amount: stripeFeeCents(pkg.recurringPriceCents!),
+                recurring: { interval: "week", interval_count: pkg.billingWeeks! },
+                product_data: { name: "Card processing fee" },
+              },
+            },
           ],
           subscription_data: { metadata },
           metadata,
@@ -79,6 +89,14 @@ export async function createEmbeddedCheckout(
                   name: pkg.name,
                   description: pkg.description || undefined,
                 },
+              },
+            },
+            {
+              quantity: 1,
+              price_data: {
+                currency: "usd",
+                unit_amount: stripeFeeCents(pkg.priceCents),
+                product_data: { name: "Card processing fee" },
               },
             },
           ],

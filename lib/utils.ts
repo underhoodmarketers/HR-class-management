@@ -10,6 +10,20 @@ export function formatMoney(cents: number) {
   });
 }
 
+// Stripe's standard US card rate.
+const STRIPE_PERCENT = 0.029;
+const STRIPE_FIXED_CENTS = 30;
+
+/**
+ * The surcharge (in cents) to add on top of baseCents so that, after
+ * Stripe's cut on the *total* charged amount, we still net exactly
+ * baseCents. Rounds up so we never net slightly under.
+ */
+export function stripeFeeCents(baseCents: number): number {
+  const grossedUp = Math.ceil((baseCents + STRIPE_FIXED_CENTS) / (1 - STRIPE_PERCENT));
+  return grossedUp - baseCents;
+}
+
 /**
  * All classes happen in Texas. Servers run in UTC, so every date shown to a
  * human — and every wall-clock time typed in by one — must be interpreted in

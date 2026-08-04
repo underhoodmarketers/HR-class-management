@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages } from "@/db/schema";
-import { formatMoney, daysUntil } from "@/lib/utils";
+import { formatMoney, daysUntil, stripeFeeCents } from "@/lib/utils";
 import { requireUser } from "@/lib/guards";
 import { getActiveMemberships } from "@/lib/queries";
 import PackageTierCard from "@/components/PackageTierCard";
@@ -113,6 +113,9 @@ export default async function PortalPackages({
             <p className="mt-1 text-sm text-ink/50">{p.description}</p>
             <p className="mt-4 font-display text-3xl font-700 text-magenta">
               {formatMoney(p.priceCents)}
+            </p>
+            <p className="text-xs text-ink/40">
+              + {formatMoney(stripeFeeCents(p.priceCents))} card processing fee
             </p>
             <ul className="mt-3 space-y-1 text-sm text-ink/60">
               <li>{p.credits ? `${p.credits} classes` : "Unlimited classes"}</li>

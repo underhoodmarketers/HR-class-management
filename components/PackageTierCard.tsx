@@ -3,7 +3,7 @@
 import { useState } from "react";
 import BuyButton from "@/components/BuyButton";
 import { type BillingType } from "@/app/actions/checkout";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, stripeFeeCents } from "@/lib/utils";
 
 type Variant = {
   id: number;
@@ -77,6 +77,9 @@ export default function PackageTierCard({
             ) : null}
           </p>
         ) : null}
+        <p className="mt-1 text-xs text-ink/40">
+          + {formatMoney(stripeFeeCents(v.priceCents))} card processing fee
+        </p>
       </div>
 
       <ul className="mt-3 space-y-1 text-sm text-ink/60">
