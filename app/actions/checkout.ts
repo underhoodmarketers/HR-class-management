@@ -1,33 +1,38 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 
-export async function startCheckout(formData: FormData) {
+export type BillingType = "one_time" | "recurring";
+
+/**
+ * Creates a Stripe Checkout Session in embedded mode and returns its
+ * client secret, so the payment form can render inline on our own page
+ * instead of redirecting to checkout.stripe.com.
+ */
+export async function createEmbeddedCheckout(
+  packageId: number,
+  billingType: BillingType
+): Promise<{ clientSecret: string } | { error: string }> {
   const session = await requireUser();
-  const packageId = Number(formData.get("packageId"));
-  const billingType = formData.get("billingType") === "recurring" ? "recurring" : "one_time";
 
   const pkg = await db.query.packages.findFirst({
     where: eq(packages.id, packageId),
   });
-  if (!pkg || !pkg.active) redirect("/portal/packages?error=unavailable");
+  if (!pkg || !pkg.active) return { error: "That package is no longer available." };
 
   if (billingType === "recurring" && (!pkg.recurringPriceCents || !pkg.billingWeeks)) {
-    redirect("/portal/packages?error=unavailable");
+    return { error: "Autopay isn't available for that package." };
+  }
+
+  if (!stripeConfigured()) {
+    return { error: "Payments aren't set up yet. Please contact the studio." };
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-
-  if (!stripeConfigured()) {
-    // Allows local testing before Stripe keys are added.
-    redirect("/portal/packages?error=stripe_not_configured");
-  }
-
   const metadata = {
     userId: String(session.userId),
     packageId: String(pkg.id),
@@ -37,6 +42,7 @@ export async function startCheckout(formData: FormData) {
   const checkout = await stripe.checkout.sessions.create(
     billingType === "recurring"
       ? {
+          ui_mode: "embedded",
           mode: "subscription",
           customer_email: session.email,
           line_items: [
@@ -55,10 +61,11 @@ export async function startCheckout(formData: FormData) {
           ],
           subscription_data: { metadata },
           metadata,
-          success_url: `${baseUrl}/portal?purchase=success`,
-          cancel_url: `${baseUrl}/portal/packages?error=canceled`,
+          redirect_on_completion: "if_required",
+          return_url: `${baseUrl}/portal?purchase=success`,
         }
       : {
+          ui_mode: "embedded",
           mode: "payment",
           customer_email: session.email,
           line_items: [
@@ -75,11 +82,11 @@ export async function startCheckout(formData: FormData) {
             },
           ],
           metadata,
-          success_url: `${baseUrl}/portal?purchase=success`,
-          cancel_url: `${baseUrl}/portal/packages?error=canceled`,
+          redirect_on_completion: "if_required",
+          return_url: `${baseUrl}/portal?purchase=success`,
         }
   );
 
-  if (!checkout.url) redirect("/portal/packages?error=checkout_failed");
-  redirect(checkout.url);
+  if (!checkout.client_secret) return { error: "Something went wrong starting checkout." };
+  return { clientSecret: checkout.client_secret };
 }

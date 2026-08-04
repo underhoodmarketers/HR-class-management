@@ -1,31 +1,18 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages } from "@/db/schema";
-import { startCheckout } from "@/app/actions/checkout";
 import { formatMoney } from "@/lib/utils";
 import PackageTierCard from "@/components/PackageTierCard";
+import BuyButton from "@/components/BuyButton";
 
 export const dynamic = "force-dynamic";
 
-const errorMessages: Record<string, string> = {
-  stripe_not_configured: "Payments aren't set up yet. Please contact the studio.",
-  canceled: "Checkout canceled — no charge was made.",
-  unavailable: "That package is no longer available.",
-  checkout_failed: "Something went wrong starting checkout. Try again.",
-};
-
-export default async function PortalPackages({
-  searchParams,
-}: {
-  searchParams: { error?: string };
-}) {
+export default async function PortalPackages() {
   const pkgs = await db.query.packages.findMany({
     where: eq(packages.active, true),
     with: { locations: { with: { location: true } } },
     orderBy: (p, { asc }) => [asc(p.priceCents)],
   });
-
-  const error = searchParams.error ? errorMessages[searchParams.error] : null;
 
   // Packages named "Tier — Duration" (e.g. "Starter — 3 Months") are grouped
   // into one card per tier with a duration switcher. Anything else (like the
@@ -51,10 +38,6 @@ export default async function PortalPackages({
         <h1 className="font-display text-3xl font-600">Packages</h1>
         <p className="text-sm text-ink/50">Pick a plan and pay securely by card.</p>
       </div>
-
-      {error ? (
-        <div className="rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-800">{error}</div>
-      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[...tierGroups.entries()].map(([tier, variants]) => (
@@ -90,11 +73,12 @@ export default async function PortalPackages({
                   : "All studios"}
               </li>
             </ul>
-            <form action={startCheckout} className="mt-6">
-              <input type="hidden" name="packageId" value={p.id} />
-              <input type="hidden" name="billingType" value="one_time" />
-              <button className="btn-primary w-full">Buy now</button>
-            </form>
+            <BuyButton
+              packageId={p.id}
+              billingType="one_time"
+              label="Buy now"
+              className="btn-primary mt-6 w-full"
+            />
           </div>
         ))}
 

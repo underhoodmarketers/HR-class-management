@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { startCheckout } from "@/app/actions/checkout";
+import BuyButton from "@/components/BuyButton";
 import { formatMoney } from "@/lib/utils";
 
 type Variant = {
@@ -73,17 +73,19 @@ export default function PackageTierCard({
       </ul>
 
       <div className="mt-6 flex flex-col gap-2">
-        <form action={startCheckout}>
-          <input type="hidden" name="packageId" value={v.id} />
-          <input type="hidden" name="billingType" value="one_time" />
-          <button className="btn-primary w-full">Pay in full</button>
-        </form>
+        <BuyButton
+          packageId={v.id}
+          billingType="one_time"
+          label="Pay in full"
+          className="btn-primary w-full"
+        />
         {v.recurringPriceCents != null ? (
-          <form action={startCheckout}>
-            <input type="hidden" name="packageId" value={v.id} />
-            <input type="hidden" name="billingType" value="recurring" />
-            <button className="btn-ghost w-full">Start autopay &amp; save</button>
-          </form>
+          <BuyButton
+            packageId={v.id}
+            billingType="recurring"
+            label="Start autopay & save"
+            className="btn-ghost w-full"
+          />
         ) : null}
       </div>
     </div>

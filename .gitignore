@@ -7,5 +7,6 @@ npm-debug.log*
 drizzle
 .vercel
 .env*
+!.env.example
 .claude
 tsconfig.tsbuildinfo
