@@ -9,6 +9,7 @@ const nav = [
   { href: "/portal/schedule", label: "Schedule" },
   { href: "/portal/packages", label: "Packages" },
   { href: "/portal/bookings", label: "My classes" },
+  { href: "/portal/profile", label: "Profile" },
 ];
 
 export default async function PortalLayout({
