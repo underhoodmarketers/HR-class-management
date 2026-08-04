@@ -1,31 +1,25 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/guards";
+import { requireInstructor } from "@/lib/guards";
 import { logoutAction } from "@/app/actions/auth";
 
 export const dynamic = "force-dynamic";
 
 const nav = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/calendar", label: "Calendar" },
-  { href: "/admin/customers", label: "Customers" },
-  { href: "/admin/instructors", label: "Instructors" },
-  { href: "/admin/packages", label: "Packages" },
-  { href: "/admin/promo-codes", label: "Promo codes" },
-  { href: "/admin/locations", label: "Studios & classes" },
-  { href: "/admin/waiver", label: "Waiver" },
+  { href: "/instructor", label: "Customers" },
+  { href: "/instructor/schedule", label: "Schedule" },
 ];
 
-export default async function AdminLayout({
+export default async function InstructorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await requireAdmin();
+  const session = await requireInstructor();
 
   return (
     <div className="min-h-screen bg-cream lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="hidden flex-col border-r border-ink/5 bg-white p-5 lg:flex">
-        <Link href="/admin" className="mb-8 font-display text-xl font-600">
+        <Link href="/instructor" className="mb-8 font-display text-xl font-600">
           Holistic <span className="text-magenta">Rhythm</span>
         </Link>
         <nav className="flex flex-1 flex-col gap-1">
@@ -47,7 +41,6 @@ export default async function AdminLayout({
         </div>
       </aside>
 
-      {/* Mobile top bar */}
       <header className="flex items-center justify-between border-b border-ink/5 bg-white px-5 py-3 lg:hidden">
         <span className="font-display text-lg font-600">Holistic Rhythm</span>
         <form action={logoutAction}>

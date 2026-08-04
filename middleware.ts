@@ -8,6 +8,7 @@ export async function middleware(req: NextRequest) {
 
   const isAdminRoute = pathname.startsWith("/admin");
   const isPortalRoute = pathname.startsWith("/portal");
+  const isInstructorRoute = pathname.startsWith("/instructor");
 
   if (!session) {
     const url = req.nextUrl.clone();
@@ -19,16 +20,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (isAdminRoute && session.role !== "admin") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/portal";
-    return NextResponse.redirect(url);
-  }
+  const home =
+    session.role === "admin"
+      ? "/admin"
+      : session.role === "instructor"
+      ? "/instructor"
+      : "/portal";
 
-  if (isPortalRoute && session.role === "admin") {
-    // Admins land in the admin console, not the customer portal.
+  if (
+    (isAdminRoute && session.role !== "admin") ||
+    (isPortalRoute && session.role !== "customer") ||
+    (isInstructorRoute && session.role !== "instructor")
+  ) {
     const url = req.nextUrl.clone();
-    url.pathname = "/admin";
+    url.pathname = home;
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
@@ -36,5 +42,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/portal/:path*"],
+  matcher: ["/admin/:path*", "/portal/:path*", "/instructor/:path*"],
 };

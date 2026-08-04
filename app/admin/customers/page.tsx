@@ -2,7 +2,8 @@ import Link from "next/link";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import DeleteCustomerButton from "@/components/DeleteCustomerButton";
+import { deleteCustomer } from "@/app/actions/admin";
+import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +79,10 @@ export default async function CustomersPage({
                     )}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <DeleteCustomerButton
+                    <ConfirmDeleteButton
                       id={c.id}
-                      name={c.name}
+                      action={deleteCustomer}
+                      confirmText={`Delete ${c.name}?\n\nThis removes their account, memberships, bookings, and waiver record. This can't be undone.`}
                       className="rounded-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
                     />
                   </td>

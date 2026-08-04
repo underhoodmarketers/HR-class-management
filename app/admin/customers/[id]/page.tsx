@@ -4,7 +4,8 @@ import { eq, desc } from "drizzle-orm";
 import { db } from "@/db";
 import { users, bookings } from "@/db/schema";
 import { formatDay, formatMoney, formatTime, formatDob } from "@/lib/utils";
-import DeleteCustomerButton from "@/components/DeleteCustomerButton";
+import { deleteCustomer } from "@/app/actions/admin";
+import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,10 @@ export default async function CustomerDetail({
           <h1 className="mt-2 font-display text-3xl font-600">{customer.name}</h1>
           <p className="text-sm text-ink/50">Joined {formatDay(customer.createdAt)}</p>
         </div>
-        <DeleteCustomerButton
+        <ConfirmDeleteButton
           id={customer.id}
-          name={customer.name}
+          action={deleteCustomer}
+          confirmText={`Delete ${customer.name}?\n\nThis removes their account, memberships, bookings, and waiver record. This can't be undone.`}
           className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
         />
       </div>

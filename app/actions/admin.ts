@@ -8,6 +8,7 @@ import {
   bookings,
   classSessions,
   classTypes,
+  instructorLocations,
   locations,
   packages,
   packageLocations,
@@ -571,4 +572,55 @@ export async function deleteCustomer(formData: FormData) {
   await db.delete(users).where(and(eq(users.id, id), eq(users.role, "customer")));
   revalidatePath("/admin/customers");
   redirect("/admin/customers?deleted=1");
+}
+
+// ---------- Instructors ----------
+export async function createInstructor(formData: FormData) {
+  await requireAdmin();
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const phone = String(formData.get("phone") || "").trim();
+  const password = String(formData.get("password") || "");
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
+
+  const invalid = name.length < 2 || !email.includes("@") || password.length < 8 || locationIds.length === 0;
+  if (invalid) {
+    redirect("/admin/instructors?error=invalid");
+  }
+
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (existing) {
+    redirect("/admin/instructors?error=exists");
+  }
+
+  const passwordHash = await hashPassword(password);
+  const [instructor] = await db
+    .insert(users)
+    .values({
+      email,
+      passwordHash,
+      name,
+      phone: phone || null,
+      role: "instructor",
+    })
+    .returning();
+
+  await db
+    .insert(instructorLocations)
+    .values(locationIds.map((locationId) => ({ userId: instructor.id, locationId })));
+
+  revalidatePath("/admin/instructors");
+  redirect("/admin/instructors?created=1");
+}
+
+export async function deleteInstructor(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  await db.delete(users).where(and(eq(users.id, id), eq(users.role, "instructor")));
+  revalidatePath("/admin/instructors");
+  redirect("/admin/instructors?deleted=1");
 }

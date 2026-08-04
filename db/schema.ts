@@ -12,15 +12,16 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-// ---------- Users (admin + customers) ----------
+// ---------- Users (admin + customers + instructors) ----------
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 40 }),
-  role: varchar("role", { length: 16 }).notNull().default("customer"), // "admin" | "customer"
-  dob: date("dob").notNull(),
+  role: varchar("role", { length: 16 }).notNull().default("customer"), // "admin" | "customer" | "instructor"
+  // Required for customers (waiver/age checks); not applicable to staff.
+  dob: date("dob"),
   instagram: varchar("instagram", { length: 60 }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -96,6 +97,20 @@ export const packageLocations = pgTable(
   (t) => ({ pk: primaryKey({ columns: [t.packageId, t.locationId] }) })
 );
 
+// Which studios an instructor is assigned to.
+export const instructorLocations = pgTable(
+  "instructor_locations",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    locationId: integer("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.locationId] }) })
+);
+
 // ---------- Memberships (a customer's purchased package) ----------
 export const memberships = pgTable("memberships", {
   id: serial("id").primaryKey(),
@@ -162,6 +177,15 @@ export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(memberships),
   bookings: many(bookings),
   signatures: many(waiverSignatures),
+  instructorLocations: many(instructorLocations),
+}));
+
+export const instructorLocationsRelations = relations(instructorLocations, ({ one }) => ({
+  user: one(users, { fields: [instructorLocations.userId], references: [users.id] }),
+  location: one(locations, {
+    fields: [instructorLocations.locationId],
+    references: [locations.id],
+  }),
 }));
 
 export const classSessionsRelations = relations(classSessions, ({ one, many }) => ({

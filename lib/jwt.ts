@@ -4,7 +4,7 @@ const encoder = new TextEncoder();
 
 export type SessionPayload = {
   userId: number;
-  role: "admin" | "customer";
+  role: "admin" | "customer" | "instructor";
   name: string;
   email: string;
 };

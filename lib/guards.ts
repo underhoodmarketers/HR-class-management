@@ -14,3 +14,10 @@ export async function requireAdmin(): Promise<SessionPayload> {
   if (session.role !== "admin") redirect("/portal");
   return session;
 }
+
+export async function requireInstructor(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (session.role !== "instructor") redirect("/portal");
+  return session;
+}

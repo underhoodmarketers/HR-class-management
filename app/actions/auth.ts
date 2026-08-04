@@ -113,13 +113,14 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 
   await createSession({
     userId: user.id,
-    role: user.role as "admin" | "customer",
+    role: user.role as "admin" | "customer" | "instructor",
     name: user.name,
     email: user.email,
   });
 
-  const dest = safeNext(next) ?? (user.role === "admin" ? "/admin" : "/portal");
-  redirect(dest);
+  const home =
+    user.role === "admin" ? "/admin" : user.role === "instructor" ? "/instructor" : "/portal";
+  redirect(safeNext(next) ?? home);
 }
 
 export async function logoutAction() {
