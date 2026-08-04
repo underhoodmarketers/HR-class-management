@@ -1,4 +1,5 @@
-import { and, gte, eq, isNull } from "drizzle-orm";
+import Link from "next/link";
+import { and, gte, lt, eq, isNull, count } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, classTypes, locations } from "@/db/schema";
 import { createSession } from "@/app/actions/admin";
@@ -6,11 +7,38 @@ import {
   formatDay,
   formatTime,
   formatDateTimeLocalValue,
+  fromStudioTime,
+  addStudioDays,
+  studioWeekday,
+  studioDateKey,
 } from "@/lib/utils";
 import WeekdayPicker from "@/components/WeekdayPicker";
 import SessionRow from "@/components/SessionRow";
 
 export const dynamic = "force-dynamic";
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function parseMonthKey(value: string | undefined, fallback: string) {
+  return value && /^\d{4}-\d{2}$/.test(value) ? value : fallback;
+}
+
+function shiftMonthKey(monthKey: string, delta: number) {
+  const [y, m] = monthKey.split("-").map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
+}
+
+function monthLabel(monthKey: string) {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 export default async function CalendarPage({
   searchParams,
@@ -21,34 +49,76 @@ export default async function CalendarPage({
     deleted?: string;
     refunded?: string;
     error?: string;
+    month?: string;
+    day?: string;
   };
 }) {
   const now = new Date();
-  const [types, studios, sessions] = await Promise.all([
+  const todayKey = studioDateKey(now);
+  const monthKey = parseMonthKey(searchParams.month, todayKey.slice(0, 7));
+  const selectedDayKey =
+    searchParams.day && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.day)
+      ? searchParams.day
+      : todayKey;
+
+  const monthStart = fromStudioTime(`${monthKey}-01T00:00`);
+  const gridStart = addStudioDays(monthStart, -studioWeekday(monthStart));
+  const GRID_DAYS = 42; // 6 full weeks
+  const gridEnd = addStudioDays(gridStart, GRID_DAYS);
+
+  const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
+  const dayEnd = addStudioDays(dayStart, 1);
+
+  const [types, studios, gridSessions, agendaSessions] = await Promise.all([
     db.select().from(classTypes),
     db
       .select()
       .from(locations)
       .where(and(eq(locations.active, true), isNull(locations.archivedAt))),
     db.query.classSessions.findMany({
-      where: gte(
-        classSessions.startsAt,
-        new Date(now.getTime() - 12 * 60 * 60 * 1000)
+      where: and(
+        gte(classSessions.startsAt, gridStart),
+        lt(classSessions.startsAt, gridEnd)
+      ),
+      with: { classType: true, location: true },
+      orderBy: [classSessions.startsAt],
+    }),
+    db.query.classSessions.findMany({
+      where: and(
+        gte(classSessions.startsAt, dayStart),
+        lt(classSessions.startsAt, dayEnd)
       ),
       with: { classType: true, location: true, bookings: true },
       orderBy: [classSessions.startsAt],
-      limit: 200,
     }),
   ]);
 
   const canSchedule = types.length > 0 && studios.length > 0;
 
-  const seriesCounts = new Map<string, number>();
-  for (const s of sessions) {
-    if (!s.seriesId) continue;
-    seriesCounts.set(s.seriesId, (seriesCounts.get(s.seriesId) ?? 0) + 1);
+  const byDay = new Map<string, typeof gridSessions>();
+  for (const s of gridSessions) {
+    const key = studioDateKey(s.startsAt);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key)!.push(s);
   }
-  const seenSoFar = new Map<string, number>();
+
+  // "Remaining in series" (including this one) for each agenda session, used
+  // to gate the series edit/delete buttons and label how many they affect.
+  const seriesRemaining = await Promise.all(
+    agendaSessions.map(async (s) => {
+      if (!s.seriesId) return 0;
+      const [{ c }] = await db
+        .select({ c: count() })
+        .from(classSessions)
+        .where(
+          and(
+            eq(classSessions.seriesId, s.seriesId),
+            gte(classSessions.startsAt, s.startsAt)
+          )
+        );
+      return c;
+    })
+  );
 
   const banner =
     searchParams.error === "invalid"
@@ -82,6 +152,11 @@ export default async function CalendarPage({
           } refunded.`,
         }
       : null;
+
+  const prevMonth = shiftMonthKey(monthKey, -1);
+  const nextMonth = shiftMonthKey(monthKey, 1);
+  const prevDayKey = studioDateKey(addStudioDays(dayStart, -1));
+  const nextDayKey = studioDateKey(addStudioDays(dayStart, 1));
 
   return (
     <div className="space-y-8">
@@ -192,54 +267,170 @@ export default async function CalendarPage({
           )}
         </div>
 
-        <div className="card p-6">
-          <h2 className="mb-4 font-600">Scheduled classes</h2>
-          {sessions.length === 0 ? (
-            <p className="text-sm text-ink/50">Nothing scheduled yet.</p>
-          ) : (
-            <ul className="divide-y divide-ink/5">
-              {sessions.map((s) => {
-                const booked = s.bookings.filter(
-                  (b) => b.status === "booked"
-                ).length;
+        <div className="space-y-6">
+          <div className="card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-600">{monthLabel(monthKey)}</h2>
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/admin/calendar?month=${prevMonth}&day=${selectedDayKey}`}
+                  className="btn-ghost px-3 py-1.5 text-xs"
+                >
+                  ‹
+                </Link>
+                <Link
+                  href={`/admin/calendar?month=${todayKey.slice(
+                    0,
+                    7
+                  )}&day=${todayKey}`}
+                  className="btn-ghost px-3 py-1.5 text-xs"
+                >
+                  Today
+                </Link>
+                <Link
+                  href={`/admin/calendar?month=${nextMonth}&day=${selectedDayKey}`}
+                  className="btn-ghost px-3 py-1.5 text-xs"
+                >
+                  ›
+                </Link>
+              </div>
+            </div>
 
-                let remaining = 0;
-                if (s.seriesId) {
-                  const seen = seenSoFar.get(s.seriesId) ?? 0;
-                  remaining = (seriesCounts.get(s.seriesId) ?? 0) - seen;
-                  seenSoFar.set(s.seriesId, seen + 1);
-                }
+            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl bg-ink/5 text-xs">
+              {WEEKDAY_LABELS.map((d) => (
+                <div
+                  key={d}
+                  className="bg-blush/40 px-2 py-1.5 text-center font-semibold text-ink/50"
+                >
+                  {d}
+                </div>
+              ))}
+              {Array.from({ length: GRID_DAYS }, (_, i) => {
+                const cellDate = addStudioDays(gridStart, i);
+                const key = studioDateKey(cellDate);
+                const inMonth = key.slice(0, 7) === monthKey;
+                const isToday = key === todayKey;
+                const isSelected = key === selectedDayKey;
+                const daySessions = (byDay.get(key) ?? []).sort(
+                  (a, b) => a.startsAt.getTime() - b.startsAt.getTime()
+                );
+                const visible = daySessions.slice(0, 3);
+                const overflow = daySessions.length - visible.length;
 
                 return (
-                  <li key={s.id}>
-                    <SessionRow
-                      session={{
-                        id: s.id,
-                        startsAt: s.startsAt,
-                        endsAt: s.endsAt,
-                        capacity: s.capacity,
-                        instructor: s.instructor,
-                        canceled: s.canceled,
-                        seriesId: s.seriesId,
-                        locationId: s.locationId,
-                      }}
-                      className={s.classType.name}
-                      locationName={s.location.name}
-                      locations={studios.map((l) => ({
-                        id: l.id,
-                        name: l.name,
-                      }))}
-                      booked={booked}
-                      dayLabel={formatDay(s.startsAt)}
-                      timeLabel={formatTime(s.startsAt)}
-                      startValue={formatDateTimeLocalValue(s.startsAt)}
-                      seriesRemaining={remaining}
-                    />
-                  </li>
+                  <Link
+                    key={key}
+                    href={`/admin/calendar?month=${monthKey}&day=${key}#agenda`}
+                    className={`flex min-h-[92px] flex-col gap-1 bg-white p-1.5 transition hover:bg-blush/30 ${
+                      inMonth ? "" : "opacity-40"
+                    } ${isSelected ? "ring-2 ring-inset ring-magenta" : ""}`}
+                  >
+                    <span
+                      className={`text-[11px] font-semibold ${
+                        isToday
+                          ? "flex h-5 w-5 items-center justify-center rounded-full bg-magenta text-white"
+                          : "text-ink/50"
+                      }`}
+                    >
+                      {Number(key.slice(8))}
+                    </span>
+                    <div className="space-y-0.5">
+                      {visible.map((s) => (
+                        <div
+                          key={s.id}
+                          title={`${formatTime(s.startsAt)} ${s.classType.name} · ${s.location.name}`}
+                          className={`truncate rounded border-l-2 bg-cream px-1 py-0.5 text-[10px] leading-tight ${
+                            s.canceled ? "text-ink/30 line-through" : "text-ink/70"
+                          }`}
+                          style={{ borderColor: s.classType.color }}
+                        >
+                          {formatTime(s.startsAt)} {s.classType.name}
+                        </div>
+                      ))}
+                      {overflow > 0 ? (
+                        <div className="px-1 text-[10px] font-medium text-magenta">
+                          +{overflow} more
+                        </div>
+                      ) : null}
+                    </div>
+                  </Link>
                 );
               })}
-            </ul>
-          )}
+            </div>
+          </div>
+
+          <div id="agenda" className="card scroll-mt-6 p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-600">
+                {formatDay(dayStart)}
+                {selectedDayKey === todayKey ? (
+                  <span className="badge ml-2 bg-blush text-magenta-deep">
+                    Today
+                  </span>
+                ) : null}
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/admin/calendar?month=${prevDayKey.slice(
+                    0,
+                    7
+                  )}&day=${prevDayKey}#agenda`}
+                  className="btn-ghost px-3 py-1.5 text-xs"
+                >
+                  ‹ Prev day
+                </Link>
+                <Link
+                  href={`/admin/calendar?month=${nextDayKey.slice(
+                    0,
+                    7
+                  )}&day=${nextDayKey}#agenda`}
+                  className="btn-ghost px-3 py-1.5 text-xs"
+                >
+                  Next day ›
+                </Link>
+              </div>
+            </div>
+
+            {agendaSessions.length === 0 ? (
+              <p className="text-sm text-ink/50">Nothing scheduled this day.</p>
+            ) : (
+              <ul className="divide-y divide-ink/5">
+                {agendaSessions.map((s, i) => {
+                  const booked = s.bookings.filter(
+                    (b) => b.status === "booked"
+                  ).length;
+
+                  return (
+                    <li key={s.id}>
+                      <SessionRow
+                        session={{
+                          id: s.id,
+                          startsAt: s.startsAt,
+                          endsAt: s.endsAt,
+                          capacity: s.capacity,
+                          instructor: s.instructor,
+                          canceled: s.canceled,
+                          seriesId: s.seriesId,
+                          locationId: s.locationId,
+                        }}
+                        className={s.classType.name}
+                        locationName={s.location.name}
+                        locations={studios.map((l) => ({
+                          id: l.id,
+                          name: l.name,
+                        }))}
+                        booked={booked}
+                        dayLabel={formatDay(s.startsAt)}
+                        timeLabel={formatTime(s.startsAt)}
+                        startValue={formatDateTimeLocalValue(s.startsAt)}
+                        seriesRemaining={seriesRemaining[i]}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </div>

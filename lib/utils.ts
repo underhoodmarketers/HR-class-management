@@ -114,6 +114,13 @@ export function studioWeekday(d: Date): number {
   return new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
 }
 
+/** "yyyy-mm-dd" calendar date of an instant, in studio time. */
+export function studioDateKey(d: Date): string {
+  const p = studioParts(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+}
+
 export function formatDay(d: Date) {
   return d.toLocaleDateString("en-US", {
     timeZone: STUDIO_TZ,
