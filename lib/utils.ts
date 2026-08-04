@@ -10,8 +10,113 @@ export function formatMoney(cents: number) {
   });
 }
 
+/**
+ * All classes happen in Texas. Servers run in UTC, so every date shown to a
+ * human — and every wall-clock time typed in by one — must be interpreted in
+ * the studio's timezone, never the server's.
+ */
+export const STUDIO_TZ = "America/Chicago";
+
+/** Wall-clock parts of an instant, as seen in the studio's timezone. */
+function studioParts(d: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: STUDIO_TZ,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(d);
+  const map: Record<string, string> = {};
+  for (const p of parts) map[p.type] = p.value;
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    // Intl can emit "24" for midnight in hour12:false mode.
+    hour: Number(map.hour) % 24,
+    minute: Number(map.minute),
+    second: Number(map.second),
+  };
+}
+
+/** Offset (ms) between the studio timezone and UTC at a given instant. */
+function studioOffsetMs(d: Date) {
+  const p = studioParts(d);
+  return (
+    Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) -
+    d.getTime()
+  );
+}
+
+/**
+ * Converts "2026-08-10T19:30" typed by Pre into the correct UTC instant,
+ * treating it as studio wall-clock time. Two passes settle DST boundaries.
+ */
+export function fromStudioTime(localValue: string): Date {
+  const naive = Date.parse(`${localValue}:00Z`);
+  if (Number.isNaN(naive)) return new Date(NaN);
+  let ts = naive - studioOffsetMs(new Date(naive));
+  ts = naive - studioOffsetMs(new Date(ts));
+  return new Date(ts);
+}
+
+/** Same wall-clock time N weeks later, staying correct across DST changes. */
+export function addStudioWeeks(d: Date, weeks: number): Date {
+  const p = studioParts(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const shifted = new Date(
+    Date.UTC(p.year, p.month - 1, p.day) + weeks * 7 * 86400000
+  );
+  const y = shifted.getUTCFullYear();
+  const m = shifted.getUTCMonth() + 1;
+  const day = shifted.getUTCDate();
+  return fromStudioTime(
+    `${y}-${pad(m)}-${pad(day)}T${pad(p.hour)}:${pad(p.minute)}`
+  );
+}
+
+/** Same wall-clock time N days later in studio time. */
+export function addStudioDays(d: Date, days: number): Date {
+  if (days === 0) return d;
+  const p = studioParts(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const shifted = new Date(
+    Date.UTC(p.year, p.month - 1, p.day) + days * 86400000
+  );
+  return fromStudioTime(
+    `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(
+      shifted.getUTCDate()
+    )}T${pad(p.hour)}:${pad(p.minute)}`
+  );
+}
+
+/** Hour and minute of an instant, in studio time. */
+export function studioClock(d: Date) {
+  const p = studioParts(d);
+  return { hour: p.hour, minute: p.minute };
+}
+
+/** Keeps the date, replaces the time-of-day, in studio time. */
+export function withStudioClock(d: Date, hour: number, minute: number): Date {
+  const p = studioParts(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return fromStudioTime(
+    `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(hour)}:${pad(minute)}`
+  );
+}
+
+/** Day-of-week (0=Sun) in the studio's timezone. */
+export function studioWeekday(d: Date): number {
+  const p = studioParts(d);
+  return new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+}
+
 export function formatDay(d: Date) {
   return d.toLocaleDateString("en-US", {
+    timeZone: STUDIO_TZ,
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -20,17 +125,19 @@ export function formatDay(d: Date) {
 
 export function formatTime(d: Date) {
   return d.toLocaleTimeString("en-US", {
+    timeZone: STUDIO_TZ,
     hour: "numeric",
     minute: "2-digit",
   });
 }
 
 export function formatDateTimeLocalValue(d: Date) {
-  // yyyy-MM-ddThh:mm for <input type="datetime-local">
+  // yyyy-MM-ddThh:mm for <input type="datetime-local">, in studio time.
+  const p = studioParts(d);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(
+    p.minute
+  )}`;
 }
 
 export function formatDob(dob: string | null) {

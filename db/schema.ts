@@ -59,6 +59,9 @@ export const classSessions = pgTable(
     capacity: integer("capacity").notNull().default(20),
     instructor: varchar("instructor", { length: 160 }),
     canceled: boolean("canceled").notNull().default(false),
+    // Classes created together as a weekly series share this id, so they can
+    // be edited or removed as a group. Null for one-off classes.
+    seriesId: varchar("series_id", { length: 40 }),
   },
   (t) => ({ startsIdx: index("sessions_starts_idx").on(t.startsAt) })
 );

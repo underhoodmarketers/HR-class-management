@@ -14,6 +14,15 @@ import {
   waiverTemplate,
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
+import {
+  fromStudioTime,
+  addStudioWeeks,
+  addStudioDays,
+  studioWeekday,
+  studioClock,
+  withStudioClock,
+} from "@/lib/utils";
+import { randomUUID } from "crypto";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -70,29 +79,155 @@ export async function createSession(formData: FormData) {
   await requireAdmin();
   const classTypeId = Number(formData.get("classTypeId"));
   const locationId = Number(formData.get("locationId"));
-  const start = new Date(String(formData.get("startsAt")));
+  const startValue = String(formData.get("startsAt") || "");
+  const start = fromStudioTime(startValue);
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
-  const repeatWeeks = Math.max(1, Math.min(52, Number(formData.get("repeatWeeks") || 1)));
+  const repeatWeeks = Math.max(
+    1,
+    Math.min(52, Number(formData.get("repeatWeeks") || 1))
+  );
 
-  if (!classTypeId || !locationId || isNaN(start.getTime())) return;
+  // Optional extra weekdays: a series can run e.g. Mon + Wed each week.
+  const extraDays = formData
+    .getAll("weekdays")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n) && n >= 0 && n <= 6);
+
+  if (!classTypeId || !locationId || isNaN(start.getTime())) {
+    redirect("/admin/calendar?error=invalid");
+  }
+
+  const startDay = studioWeekday(start);
+  // The picked date's own weekday is always included.
+  const days = Array.from(new Set([startDay, ...extraDays])).sort();
+
+  const isSeries = repeatWeeks > 1 || days.length > 1;
+  const seriesId = isSeries ? randomUUID().slice(0, 36) : null;
 
   const rows = [];
-  for (let i = 0; i < repeatWeeks; i++) {
-    const s = new Date(start.getTime() + i * 7 * 24 * 60 * 60 * 1000);
-    const e = new Date(s.getTime() + durationMin * 60 * 1000);
-    rows.push({
-      classTypeId,
-      locationId,
-      startsAt: s,
-      endsAt: e,
-      capacity,
-      instructor,
-    });
+  for (let week = 0; week < repeatWeeks; week++) {
+    for (const day of days) {
+      // Offset from the anchor day, keeping within the same week block.
+      const dayOffset = day - startDay;
+      const s = addStudioDays(addStudioWeeks(start, week), dayOffset);
+      if (Number.isNaN(s.getTime())) continue;
+      rows.push({
+        classTypeId,
+        locationId,
+        startsAt: s,
+        endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
+        capacity,
+        instructor,
+        seriesId,
+      });
+    }
   }
+
+  rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   await db.insert(classSessions).values(rows);
   revalidatePath("/admin/calendar");
+  revalidatePath("/admin");
+  redirect(`/admin/calendar?created=${rows.length}`);
+}
+
+export async function editSession(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const scope = String(formData.get("scope") || "one"); // "one" | "series"
+  const startValue = String(formData.get("startsAt") || "");
+  const start = fromStudioTime(startValue);
+  const durationMin = Number(formData.get("durationMin") || 60);
+  const capacity = Number(formData.get("capacity") || 20);
+  const instructor = String(formData.get("instructor") || "") || null;
+  const locationId = Number(formData.get("locationId"));
+
+  const existing = await db.query.classSessions.findFirst({
+    where: eq(classSessions.id, id),
+  });
+  if (!existing || Number.isNaN(start.getTime())) {
+    redirect("/admin/calendar?error=invalid");
+  }
+
+  if (scope === "series" && existing.seriesId) {
+    // Shift the whole remaining series by the same delta, preserving each
+    // class's own date while applying the new time-of-day and details.
+    const siblings = await db
+      .select()
+      .from(classSessions)
+      .where(
+        and(
+          eq(classSessions.seriesId, existing.seriesId),
+          gte(classSessions.startsAt, existing.startsAt)
+        )
+      );
+
+    const newParts = studioClock(start);
+    for (const sib of siblings) {
+      const s = withStudioClock(sib.startsAt, newParts.hour, newParts.minute);
+      await db
+        .update(classSessions)
+        .set({
+          startsAt: s,
+          endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
+          capacity,
+          instructor,
+          locationId: locationId || sib.locationId,
+        })
+        .where(eq(classSessions.id, sib.id));
+    }
+    revalidatePath("/admin/calendar");
+    revalidatePath("/admin");
+    redirect(`/admin/calendar?updated=${siblings.length}`);
+  }
+
+  await db
+    .update(classSessions)
+    .set({
+      startsAt: start,
+      endsAt: new Date(start.getTime() + durationMin * 60 * 1000),
+      capacity,
+      instructor,
+      locationId: locationId || existing.locationId,
+      // Editing a single class detaches it so future series edits skip it.
+      seriesId: scope === "one" ? null : existing.seriesId,
+    })
+    .where(eq(classSessions.id, id));
+
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin");
+  redirect("/admin/calendar?updated=1");
+}
+
+export async function deleteSeries(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const existing = await db.query.classSessions.findFirst({
+    where: eq(classSessions.id, id),
+  });
+  if (!existing?.seriesId) {
+    redirect("/admin/calendar?error=not_series");
+  }
+
+  // Only remove this class and everything after it — past classes are history.
+  const targets = await db
+    .select({ id: classSessions.id })
+    .from(classSessions)
+    .where(
+      and(
+        eq(classSessions.seriesId, existing.seriesId),
+        gte(classSessions.startsAt, existing.startsAt)
+      )
+    );
+
+  const ids = targets.map((t) => t.id);
+  const refunded = await refundBookingsForSessions(ids);
+  await db.delete(classSessions).where(inArray(classSessions.id, ids));
+
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin");
+  redirect(`/admin/calendar?deleted=${ids.length}&refunded=${refunded}`);
 }
 
 export async function cancelSession(formData: FormData) {

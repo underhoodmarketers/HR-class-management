@@ -1,35 +1,110 @@
 import { and, gte, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, classTypes, locations } from "@/db/schema";
-import { createSession, cancelSession, deleteSession } from "@/app/actions/admin";
-import { formatDay, formatTime } from "@/lib/utils";
+import { createSession } from "@/app/actions/admin";
+import {
+  formatDay,
+  formatTime,
+  formatDateTimeLocalValue,
+} from "@/lib/utils";
+import WeekdayPicker from "@/components/WeekdayPicker";
+import SessionRow from "@/components/SessionRow";
 
 export const dynamic = "force-dynamic";
 
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: {
+    created?: string;
+    updated?: string;
+    deleted?: string;
+    refunded?: string;
+    error?: string;
+  };
+}) {
   const now = new Date();
   const [types, studios, sessions] = await Promise.all([
     db.select().from(classTypes),
-    db.select().from(locations).where(and(eq(locations.active, true), isNull(locations.archivedAt))),
+    db
+      .select()
+      .from(locations)
+      .where(and(eq(locations.active, true), isNull(locations.archivedAt))),
     db.query.classSessions.findMany({
-      where: gte(classSessions.startsAt, new Date(now.getTime() - 12 * 60 * 60 * 1000)),
+      where: gte(
+        classSessions.startsAt,
+        new Date(now.getTime() - 12 * 60 * 60 * 1000)
+      ),
       with: { classType: true, location: true, bookings: true },
       orderBy: [classSessions.startsAt],
-      limit: 100,
+      limit: 200,
     }),
   ]);
 
   const canSchedule = types.length > 0 && studios.length > 0;
 
+  const seriesCounts = new Map<string, number>();
+  for (const s of sessions) {
+    if (!s.seriesId) continue;
+    seriesCounts.set(s.seriesId, (seriesCounts.get(s.seriesId) ?? 0) + 1);
+  }
+  const seenSoFar = new Map<string, number>();
+
+  const banner =
+    searchParams.error === "invalid"
+      ? {
+          tone: "error" as const,
+          text: "Please pick a class, studio, and a valid start time.",
+        }
+      : searchParams.error === "not_series"
+      ? { tone: "error" as const, text: "That class isn't part of a series." }
+      : searchParams.created
+      ? {
+          tone: "ok" as const,
+          text: `${searchParams.created} class${
+            searchParams.created === "1" ? "" : "es"
+          } added to your calendar.`,
+        }
+      : searchParams.updated
+      ? {
+          tone: "ok" as const,
+          text: `${searchParams.updated} class${
+            searchParams.updated === "1" ? "" : "es"
+          } updated.`,
+        }
+      : searchParams.deleted
+      ? {
+          tone: "ok" as const,
+          text: `${searchParams.deleted} class${
+            searchParams.deleted === "1" ? "" : "es"
+          } deleted. ${searchParams.refunded ?? 0} credit${
+            searchParams.refunded === "1" ? "" : "s"
+          } refunded.`,
+        }
+      : null;
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-3xl font-600">Calendar</h1>
-        <p className="text-sm text-ink/50">Schedule classes across your studios.</p>
+        <p className="text-sm text-ink/50">
+          Schedule classes across your studios. All times are Central.
+        </p>
       </div>
 
+      {banner ? (
+        <div
+          className={
+            banner.tone === "error"
+              ? "rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              : "rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep"
+          }
+        >
+          {banner.text}
+        </div>
+      ) : null}
+
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
-        {/* Schedule form */}
         <div className="card h-fit p-6">
           <h2 className="mb-4 font-600">Schedule a class</h2>
           {canSchedule ? (
@@ -38,7 +113,9 @@ export default async function CalendarPage() {
                 <label className="label">Class</label>
                 <select name="classTypeId" className="input" required>
                   {types.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -46,44 +123,81 @@ export default async function CalendarPage() {
                 <label className="label">Studio</label>
                 <select name="locationId" className="input" required>
                   {studios.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="label">Starts at</label>
-                <input type="datetime-local" name="startsAt" className="input" required />
+                <label className="label">First class starts at</label>
+                <input
+                  type="datetime-local"
+                  name="startsAt"
+                  className="input"
+                  required
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Minutes</label>
-                  <input type="number" name="durationMin" defaultValue={60} min={15} className="input" />
+                  <input
+                    type="number"
+                    name="durationMin"
+                    defaultValue={60}
+                    min={15}
+                    className="input"
+                  />
                 </div>
                 <div>
                   <label className="label">Capacity</label>
-                  <input type="number" name="capacity" defaultValue={20} min={1} className="input" />
+                  <input
+                    type="number"
+                    name="capacity"
+                    defaultValue={20}
+                    min={1}
+                    className="input"
+                  />
                 </div>
               </div>
               <div>
                 <label className="label">Instructor (optional)</label>
-                <input name="instructor" className="input" placeholder="e.g. Pre" />
+                <input
+                  name="instructor"
+                  className="input"
+                  placeholder="e.g. Pre"
+                />
               </div>
               <div>
                 <label className="label">Repeat weekly for</label>
-                <input type="number" name="repeatWeeks" defaultValue={1} min={1} max={52} className="input" />
-                <p className="mt-1 text-xs text-ink/40">Set to 8 to create the same class for 8 weeks.</p>
+                <input
+                  type="number"
+                  name="repeatWeeks"
+                  defaultValue={1}
+                  min={1}
+                  max={52}
+                  className="input"
+                />
+                <p className="mt-1 text-xs text-ink/40">
+                  Number of weeks. Set to 8 for the next 8 weeks.
+                </p>
               </div>
+
+              <WeekdayPicker />
+
               <button className="btn-primary w-full">Add to calendar</button>
             </form>
           ) : (
             <p className="text-sm text-ink/50">
               Add at least one class and one studio first on the{" "}
-              <a href="/admin/locations" className="text-magenta">Studios &amp; classes</a> page.
+              <a href="/admin/locations" className="text-magenta">
+                Studios &amp; classes
+              </a>{" "}
+              page.
             </p>
           )}
         </div>
 
-        {/* Upcoming list */}
         <div className="card p-6">
           <h2 className="mb-4 font-600">Scheduled classes</h2>
           {sessions.length === 0 ? (
@@ -91,35 +205,42 @@ export default async function CalendarPage() {
           ) : (
             <ul className="divide-y divide-ink/5">
               {sessions.map((s) => {
-                const booked = s.bookings.filter((b) => b.status === "booked").length;
+                const booked = s.bookings.filter(
+                  (b) => b.status === "booked"
+                ).length;
+
+                let remaining = 0;
+                if (s.seriesId) {
+                  const seen = seenSoFar.get(s.seriesId) ?? 0;
+                  remaining = (seriesCounts.get(s.seriesId) ?? 0) - seen;
+                  seenSoFar.set(s.seriesId, seen + 1);
+                }
+
                 return (
-                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="h-9 w-1.5 rounded-full" style={{ background: s.classType.color }} />
-                      <div>
-                        <p className="font-medium">
-                          {s.classType.name}
-                          {s.canceled ? (
-                            <span className="badge ml-2 bg-ink/10 text-ink/60">Canceled</span>
-                          ) : null}
-                        </p>
-                        <p className="text-xs text-ink/50">
-                          {s.location.name} · {formatDay(s.startsAt)} {formatTime(s.startsAt)} · {booked}/{s.capacity}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {!s.canceled ? (
-                        <form action={cancelSession}>
-                          <input type="hidden" name="id" value={s.id} />
-                          <button className="btn-subtle px-3 py-1.5 text-xs">Cancel</button>
-                        </form>
-                      ) : null}
-                      <form action={deleteSession}>
-                        <input type="hidden" name="id" value={s.id} />
-                        <button className="btn px-3 py-1.5 text-xs text-ink/40 hover:text-magenta">Delete</button>
-                      </form>
-                    </div>
+                  <li key={s.id}>
+                    <SessionRow
+                      session={{
+                        id: s.id,
+                        startsAt: s.startsAt,
+                        endsAt: s.endsAt,
+                        capacity: s.capacity,
+                        instructor: s.instructor,
+                        canceled: s.canceled,
+                        seriesId: s.seriesId,
+                        locationId: s.locationId,
+                      }}
+                      className={s.classType.name}
+                      locationName={s.location.name}
+                      locations={studios.map((l) => ({
+                        id: l.id,
+                        name: l.name,
+                      }))}
+                      booked={booked}
+                      dayLabel={formatDay(s.startsAt)}
+                      timeLabel={formatTime(s.startsAt)}
+                      startValue={formatDateTimeLocalValue(s.startsAt)}
+                      seriesRemaining={remaining}
+                    />
                   </li>
                 );
               })}

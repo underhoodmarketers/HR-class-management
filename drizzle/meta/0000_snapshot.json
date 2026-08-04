@@ -1,5 +1,5 @@
 {
-  "id": "246ea3dc-9523-4b59-902f-caca07583289",
+  "id": "aaf24046-c23a-4f68-8877-0c61d92e8dc5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -167,6 +167,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "series_id": {
+          "name": "series_id",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
