@@ -6,6 +6,7 @@ import {
   cancelSession,
   deleteSession,
   deleteSeries,
+  adminBookClass,
 } from "@/app/actions/admin";
 import { SubmitButton } from "./SubmitButton";
 
@@ -20,6 +21,8 @@ type Session = {
   locationId: number;
 };
 
+type RosterEntry = { bookingId: number; userId: number; name: string; contact: string };
+
 export default function SessionRow({
   session,
   className,
@@ -30,6 +33,8 @@ export default function SessionRow({
   timeLabel,
   startValue,
   seriesRemaining,
+  roster,
+  customers,
 }: {
   session: Session;
   className: string;
@@ -40,14 +45,70 @@ export default function SessionRow({
   timeLabel: string;
   startValue: string;
   seriesRemaining: number;
+  roster: RosterEntry[];
+  customers: { id: number; name: string }[];
 }) {
-  const [editing, setEditing] = useState<null | "one" | "series">(null);
+  const [editing, setEditing] = useState<null | "one" | "series" | "roster">(null);
+  const bookableCustomers = customers.filter(
+    (c) => !roster.some((r) => r.userId === c.id)
+  );
 
   const durationMin = Math.round(
     (session.endsAt.getTime() - session.startsAt.getTime()) / 60000
   );
 
-  if (editing) {
+  if (editing === "roster") {
+    return (
+      <div className="bg-blush/20 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-medium text-magenta-deep">
+            Who&apos;s booked into {className} · {dayLabel} {timeLabel}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(null)}
+            className="text-xs text-ink/40 hover:text-ink/60"
+          >
+            Close
+          </button>
+        </div>
+
+        {roster.length > 0 ? (
+          <ul className="mb-3 divide-y divide-ink/10 rounded-xl bg-white text-sm">
+            {roster.map((r) => (
+              <li key={r.bookingId} className="flex items-center justify-between px-3 py-2">
+                <span>{r.name}</span>
+                <span className="text-xs text-ink/40">{r.contact}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mb-3 text-sm text-ink/50">Nobody booked yet.</p>
+        )}
+
+        {booked < session.capacity && bookableCustomers.length > 0 ? (
+          <form action={adminBookClass} className="flex gap-2">
+            <input type="hidden" name="sessionId" value={session.id} />
+            <select name="userId" className="input" required defaultValue="">
+              <option value="" disabled>
+                Book a customer…
+              </option>
+              {bookableCustomers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <SubmitButton className="btn-primary px-4 text-sm">Book</SubmitButton>
+          </form>
+        ) : booked >= session.capacity ? (
+          <p className="text-xs text-ink/40">Class is full.</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (editing === "one" || editing === "series") {
     return (
       <div className="bg-blush/20 p-4">
         <p className="mb-3 text-xs font-medium text-magenta-deep">
@@ -176,6 +237,14 @@ export default function SessionRow({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setEditing("roster")}
+          className="btn-ghost px-3 py-1.5 text-xs"
+        >
+          Roster
+        </button>
+
         <button
           type="button"
           onClick={() => setEditing("one")}

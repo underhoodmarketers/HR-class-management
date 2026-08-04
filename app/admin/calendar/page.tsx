@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, gte, lt, eq, isNull, count } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, classTypes, locations } from "@/db/schema";
+import { classSessions, classTypes, locations, users } from "@/db/schema";
 import { createSession } from "@/app/actions/admin";
 import {
   formatDay,
@@ -69,7 +69,7 @@ export default async function CalendarPage({
   const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
   const dayEnd = addStudioDays(dayStart, 1);
 
-  const [types, studios, gridSessions, agendaSessions] = await Promise.all([
+  const [types, studios, gridSessions, agendaSessions, customers] = await Promise.all([
     db.select().from(classTypes),
     db
       .select()
@@ -88,8 +88,12 @@ export default async function CalendarPage({
         gte(classSessions.startsAt, dayStart),
         lt(classSessions.startsAt, dayEnd)
       ),
-      with: { classType: true, location: true, bookings: true },
+      with: { classType: true, location: true, bookings: { with: { user: true } } },
       orderBy: [classSessions.startsAt],
+    }),
+    db.query.users.findMany({
+      where: eq(users.role, "customer"),
+      orderBy: (u, { asc }) => [asc(u.name)],
     }),
   ]);
 
@@ -397,9 +401,9 @@ export default async function CalendarPage({
             ) : (
               <ul className="divide-y divide-ink/5">
                 {agendaSessions.map((s, i) => {
-                  const booked = s.bookings.filter(
+                  const activeBookings = s.bookings.filter(
                     (b) => b.status === "booked"
-                  ).length;
+                  );
 
                   return (
                     <li key={s.id}>
@@ -420,11 +424,18 @@ export default async function CalendarPage({
                           id: l.id,
                           name: l.name,
                         }))}
-                        booked={booked}
+                        booked={activeBookings.length}
                         dayLabel={formatDay(s.startsAt)}
                         timeLabel={formatTime(s.startsAt)}
                         startValue={formatDateTimeLocalValue(s.startsAt)}
                         seriesRemaining={seriesRemaining[i]}
+                        roster={activeBookings.map((b) => ({
+                          bookingId: b.id,
+                          userId: b.userId,
+                          name: b.user.name,
+                          contact: b.user.phone || b.user.email,
+                        }))}
+                        customers={customers.map((c) => ({ id: c.id, name: c.name }))}
                       />
                     </li>
                   );

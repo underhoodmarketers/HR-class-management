@@ -10,6 +10,7 @@ import {
   classTypes,
   instructorLocations,
   locations,
+  memberships,
   packages,
   packageLocations,
   users,
@@ -18,6 +19,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
+import { getActiveMembership } from "@/lib/queries";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -253,6 +255,50 @@ export async function deleteSeries(formData: FormData) {
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
   redirect(`/admin/calendar?deleted=${ids.length}&refunded=${refunded}`);
+}
+
+/**
+ * Books a customer into a class on staff's behalf — e.g. for a phone or
+ * walk-in booking. More permissive than the customer-facing bookClass:
+ * doesn't require the customer's package to cover this studio, and still
+ * books them even with zero credits (just skips the deduction). Capacity
+ * and duplicate-booking checks still apply since those reflect real room
+ * limits, not a paywall.
+ */
+export async function adminBookClass(formData: FormData) {
+  await requireAdmin();
+  const sessionId = Number(formData.get("sessionId"));
+  const userId = Number(formData.get("userId"));
+  if (!sessionId || !userId) return;
+
+  const classSession = await db.query.classSessions.findFirst({
+    where: eq(classSessions.id, sessionId),
+    with: { bookings: true },
+  });
+  if (!classSession || classSession.canceled) return;
+
+  const alreadyBooked = classSession.bookings.some(
+    (b) => b.userId === userId && b.status === "booked"
+  );
+  if (alreadyBooked) return;
+
+  const bookedCount = classSession.bookings.filter((b) => b.status === "booked").length;
+  if (bookedCount >= classSession.capacity) return;
+
+  const active = await getActiveMembership(userId);
+  const membershipId = active?.membership.id ?? null;
+
+  await db.insert(bookings).values({ userId, sessionId, membershipId, status: "booked" });
+
+  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
+    await db
+      .update(memberships)
+      .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
+      .where(eq(memberships.id, active.membership.id));
+  }
+
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin");
 }
 
 export async function cancelSession(formData: FormData) {
