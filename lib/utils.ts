@@ -121,6 +121,18 @@ export function studioDateKey(d: Date): string {
   return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 
+/** Whole calendar days from today until an instant, in studio time (negative if past). */
+export function daysUntil(d: Date): number {
+  const toUtcMidnight = (key: string) => {
+    const [y, m, day] = key.split("-").map(Number);
+    return Date.UTC(y, m - 1, day);
+  };
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.round(
+    (toUtcMidnight(studioDateKey(d)) - toUtcMidnight(studioDateKey(new Date()))) / dayMs
+  );
+}
+
 export function formatDay(d: Date) {
   return d.toLocaleDateString("en-US", {
     timeZone: STUDIO_TZ,

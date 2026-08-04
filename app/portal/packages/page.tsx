@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages } from "@/db/schema";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, daysUntil } from "@/lib/utils";
+import { requireUser } from "@/lib/guards";
+import { getActiveMemberships } from "@/lib/queries";
 import PackageTierCard from "@/components/PackageTierCard";
 import BuyButton from "@/components/BuyButton";
 
@@ -12,13 +14,17 @@ export default async function PortalPackages({
 }: {
   searchParams: { package?: string };
 }) {
+  const session = await requireUser();
   const highlightId = Number(searchParams.package) || null;
 
-  const pkgs = await db.query.packages.findMany({
-    where: eq(packages.active, true),
-    with: { locations: { with: { location: true } } },
-    orderBy: (p, { asc }) => [asc(p.priceCents)],
-  });
+  const [pkgs, activeMemberships] = await Promise.all([
+    db.query.packages.findMany({
+      where: eq(packages.active, true),
+      with: { locations: { with: { location: true } } },
+      orderBy: (p, { asc }) => [asc(p.priceCents)],
+    }),
+    getActiveMemberships(session.userId),
+  ]);
 
   // Packages named "Tier — Duration" (e.g. "Starter — 3 Months") are grouped
   // into one card per tier with a duration switcher. Anything else (like the
@@ -44,6 +50,32 @@ export default async function PortalPackages({
         <h1 className="font-display text-3xl font-600">Packages</h1>
         <p className="text-sm text-ink/50">Pick a plan and pay securely by card.</p>
       </div>
+
+      {activeMemberships.length > 0 ? (
+        <div className="rounded-2xl border border-magenta/15 bg-blush/40 p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink/50">
+            You currently have
+          </p>
+          <ul className="space-y-2">
+            {activeMemberships.map((m) => {
+              const days = daysUntil(m.endsAt);
+              const verb = m.billingType === "recurring" ? "Renews" : "Expires";
+              const when =
+                days <= 0 ? `${verb} today` : days === 1 ? `${verb} in 1 day` : `${verb} in ${days} days`;
+              return (
+                <li key={m.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                  <span className="font-600 text-magenta-deep">{m.package.name}</span>
+                  <span className="text-sm text-ink/60">
+                    {m.creditsRemaining === null ? "Unlimited classes" : `${m.creditsRemaining} classes left`}
+                    {" · "}
+                    {when}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[...tierGroups.entries()].map(([tier, variants]) => (
