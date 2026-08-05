@@ -17,14 +17,17 @@ export default async function PortalHome({
   const active = await getActiveMembership(session.userId);
   const now = new Date();
 
-  const nextBooking = await db.query.bookings.findFirst({
+  const myBookings = await db.query.bookings.findMany({
     where: and(eq(bookings.userId, session.userId), eq(bookings.status, "booked")),
     with: { session: { with: { classType: true, location: true } } },
-    orderBy: (b, { asc }) => [asc(b.createdAt)],
   });
 
+  // The soonest booking that hasn't happened yet — not just whichever was
+  // booked first, since an earlier-created booking may already be in the past.
   const upcoming =
-    nextBooking && nextBooking.session.startsAt > now ? nextBooking : null;
+    myBookings
+      .filter((b) => b.session.startsAt > now && !b.session.canceled)
+      .sort((a, b) => a.session.startsAt.getTime() - b.session.startsAt.getTime())[0] ?? null;
 
   return (
     <div className="space-y-6">
