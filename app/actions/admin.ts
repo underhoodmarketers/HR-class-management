@@ -83,6 +83,33 @@ async function refundBookingsForSessions(sessionIds: number[]) {
   return affected.length;
 }
 
+/**
+ * Auto-matches the free-text "instructor" label (e.g. "Dia") to an actual
+ * instructor account assigned to this studio, so that instructor's portal
+ * shows the class even if another instructor also teaches at the studio.
+ * Falls back to null (visible to every instructor assigned to the studio)
+ * when there's no name, or it doesn't match exactly one instructor there.
+ */
+async function resolveAssignedInstructorId(
+  instructorText: string | null,
+  locationId: number
+): Promise<number | null> {
+  const name = instructorText?.trim().toLowerCase();
+  if (!name || !locationId) return null;
+
+  const candidates = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .innerJoin(instructorLocations, eq(instructorLocations.userId, users.id))
+    .where(and(eq(users.role, "instructor"), eq(instructorLocations.locationId, locationId)));
+
+  const matches = candidates.filter((c) => {
+    const candidateName = c.name.toLowerCase();
+    return candidateName.includes(name) || name.includes(candidateName);
+  });
+  return matches.length === 1 ? matches[0].id : null;
+}
+
 // ---------- Class sessions ----------
 export async function createSession(formData: FormData) {
   await requireAdmin();
@@ -93,9 +120,7 @@ export async function createSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
-  // Which instructor account can see this in their portal — null means any
-  // instructor assigned to the studio can see it.
-  const assignedInstructorId = Number(formData.get("assignedInstructorId")) || null;
+  const assignedInstructorId = await resolveAssignedInstructorId(instructor, locationId);
 
   // Optional: repeat weekly through this date. Blank = just the picked date(s), once.
   const endDateValue = String(formData.get("endDate") || "");
@@ -174,7 +199,6 @@ export async function editSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
-  const assignedInstructorId = Number(formData.get("assignedInstructorId")) || null;
   const locationId = Number(formData.get("locationId"));
 
   const existing = await db.query.classSessions.findFirst({
@@ -200,6 +224,7 @@ export async function editSession(formData: FormData) {
     const newParts = studioClock(start);
     for (const sib of siblings) {
       const s = withStudioClock(sib.startsAt, newParts.hour, newParts.minute);
+      const sibLocationId = locationId || sib.locationId;
       await db
         .update(classSessions)
         .set({
@@ -207,8 +232,8 @@ export async function editSession(formData: FormData) {
           endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
           capacity,
           instructor,
-          assignedInstructorId,
-          locationId: locationId || sib.locationId,
+          assignedInstructorId: await resolveAssignedInstructorId(instructor, sibLocationId),
+          locationId: sibLocationId,
         })
         .where(eq(classSessions.id, sib.id));
     }
@@ -217,6 +242,7 @@ export async function editSession(formData: FormData) {
     redirect(`/admin/calendar?updated=${siblings.length}`);
   }
 
+  const finalLocationId = locationId || existing.locationId;
   await db
     .update(classSessions)
     .set({
@@ -224,8 +250,8 @@ export async function editSession(formData: FormData) {
       endsAt: new Date(start.getTime() + durationMin * 60 * 1000),
       capacity,
       instructor,
-      assignedInstructorId,
-      locationId: locationId || existing.locationId,
+      assignedInstructorId: await resolveAssignedInstructorId(instructor, finalLocationId),
+      locationId: finalLocationId,
       // Editing a single class detaches it so future series edits skip it.
       seriesId: scope === "one" ? null : existing.seriesId,
     })

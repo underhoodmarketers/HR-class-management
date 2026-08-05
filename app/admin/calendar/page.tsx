@@ -237,17 +237,6 @@ export default async function CalendarPage({
                 />
               </div>
               <div>
-                <label className="label">Who can see this in their portal</label>
-                <select name="assignedInstructorId" className="input" defaultValue="">
-                  <option value="">Any instructor at this studio</option>
-                  {instructors.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
                 <label className="label">Repeat weekly until (optional)</label>
                 <input type="date" name="endDate" className="input" />
                 <p className="mt-1 text-xs text-ink/40">
@@ -413,7 +402,6 @@ export default async function CalendarPage({
                           endsAt: s.endsAt,
                           capacity: s.capacity,
                           instructor: s.instructor,
-                          assignedInstructorId: s.assignedInstructorId,
                           canceled: s.canceled,
                           seriesId: s.seriesId,
                           locationId: s.locationId,
@@ -424,7 +412,6 @@ export default async function CalendarPage({
                           id: l.id,
                           name: l.name,
                         }))}
-                        instructors={instructors.map((i) => ({ id: i.id, name: i.name }))}
                         assignedInstructorName={
                           s.assignedInstructorId
                             ? instructorNameById.get(s.assignedInstructorId) ?? null

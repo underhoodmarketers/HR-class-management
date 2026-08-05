@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, eq, gte, gt, lt, inArray, or, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, instructorLocations } from "@/db/schema";
+import { classSessions, instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import {
   formatDay,
@@ -14,6 +14,7 @@ import {
   shiftMonthKey,
   monthLabel,
 } from "@/lib/utils";
+import InstructorBookForm from "@/components/InstructorBookForm";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +83,7 @@ export default async function InstructorSchedulePage({
     eq(classSessions.assignedInstructorId, session.userId)
   );
 
-  const [upNext, gridSessions, agendaSessions] = await Promise.all([
+  const [upNext, gridSessions, agendaSessions, customers] = await Promise.all([
     db.query.classSessions.findFirst({
       where: and(
         inArray(classSessions.locationId, locationFilter),
@@ -112,6 +113,10 @@ export default async function InstructorSchedulePage({
       ),
       with: { classType: true, location: true, bookings: { with: { user: true } } },
       orderBy: [classSessions.startsAt],
+    }),
+    db.query.users.findMany({
+      where: eq(users.role, "customer"),
+      orderBy: (u, { asc }) => [asc(u.name)],
     }),
   ]);
 
@@ -169,6 +174,21 @@ export default async function InstructorSchedulePage({
                       name: b.user.name,
                       contact: b.user.phone || b.user.email,
                     }))}
+                />
+                <InstructorBookForm
+                  sessionId={upNext.id}
+                  full={
+                    upNext.bookings.filter((b) => b.status === "booked").length >=
+                    upNext.capacity
+                  }
+                  bookableCustomers={customers
+                    .filter(
+                      (c) =>
+                        !upNext.bookings.some(
+                          (b) => b.userId === c.id && b.status === "booked"
+                        )
+                    )
+                    .map((c) => ({ id: c.id, name: c.name }))}
                 />
               </div>
             ) : (
@@ -310,6 +330,22 @@ export default async function InstructorSchedulePage({
                         contact: b.user.phone || b.user.email,
                       }))}
                   />
+                  {!s.canceled ? (
+                    <InstructorBookForm
+                      sessionId={s.id}
+                      full={
+                        s.bookings.filter((b) => b.status === "booked").length >= s.capacity
+                      }
+                      bookableCustomers={customers
+                        .filter(
+                          (c) =>
+                            !s.bookings.some(
+                              (b) => b.userId === c.id && b.status === "booked"
+                            )
+                        )
+                        .map((c) => ({ id: c.id, name: c.name }))}
+                    />
+                  ) : null}
                 </div>
               ))
             )}

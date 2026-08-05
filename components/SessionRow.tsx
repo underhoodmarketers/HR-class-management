@@ -16,7 +16,6 @@ type Session = {
   endsAt: Date;
   capacity: number;
   instructor: string | null;
-  assignedInstructorId: number | null;
   canceled: boolean;
   seriesId: string | null;
   locationId: number;
@@ -29,7 +28,6 @@ export default function SessionRow({
   className,
   locationName,
   locations,
-  instructors,
   assignedInstructorName,
   booked,
   dayLabel,
@@ -43,7 +41,6 @@ export default function SessionRow({
   className: string;
   locationName: string;
   locations: { id: number; name: string }[];
-  instructors: { id: number; name: string }[];
   assignedInstructorName: string | null;
   booked: number;
   dayLabel: string;
@@ -185,22 +182,6 @@ export default function SessionRow({
               defaultValue={session.instructor ?? ""}
               placeholder="e.g. Pre"
             />
-          </div>
-
-          <div>
-            <label className="label">Who can see this in their portal</label>
-            <select
-              name="assignedInstructorId"
-              className="input"
-              defaultValue={session.assignedInstructorId ?? ""}
-            >
-              <option value="">Any instructor at this studio</option>
-              {instructors.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
           </div>
 
           {editing === "series" ? (
