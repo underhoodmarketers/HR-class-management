@@ -61,7 +61,13 @@ export const classSessions = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     capacity: integer("capacity").notNull().default(20),
+    // Free-text display label — doesn't require an instructor account.
     instructor: varchar("instructor", { length: 160 }),
+    // The instructor account that can see this class in their portal. Null
+    // means any instructor assigned to the studio can see it (default).
+    assignedInstructorId: integer("assigned_instructor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     canceled: boolean("canceled").notNull().default(false),
     // Classes created together as a weekly series share this id, so they can
     // be edited or removed as a group. Null for one-off classes.
@@ -239,6 +245,10 @@ export const classSessionsRelations = relations(classSessions, ({ one, many }) =
   location: one(locations, {
     fields: [classSessions.locationId],
     references: [locations.id],
+  }),
+  assignedInstructor: one(users, {
+    fields: [classSessions.assignedInstructorId],
+    references: [users.id],
   }),
   bookings: many(bookings),
 }));

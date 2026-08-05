@@ -51,7 +51,7 @@ export default async function CalendarPage({
   const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
   const dayEnd = addStudioDays(dayStart, 1);
 
-  const [types, studios, gridSessions, agendaSessions, customers] = await Promise.all([
+  const [types, studios, gridSessions, agendaSessions, customers, instructors] = await Promise.all([
     db.select().from(classTypes),
     db
       .select()
@@ -77,7 +77,13 @@ export default async function CalendarPage({
       where: eq(users.role, "customer"),
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
+    db.query.users.findMany({
+      where: eq(users.role, "instructor"),
+      orderBy: (u, { asc }) => [asc(u.name)],
+    }),
   ]);
+
+  const instructorNameById = new Map(instructors.map((i) => [i.id, i.name]));
 
   const canSchedule = types.length > 0 && studios.length > 0;
 
@@ -229,6 +235,17 @@ export default async function CalendarPage({
                   className="input"
                   placeholder="e.g. Pre"
                 />
+              </div>
+              <div>
+                <label className="label">Who can see this in their portal</label>
+                <select name="assignedInstructorId" className="input" defaultValue="">
+                  <option value="">Any instructor at this studio</option>
+                  {instructors.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="label">Repeat weekly until (optional)</label>
@@ -396,6 +413,7 @@ export default async function CalendarPage({
                           endsAt: s.endsAt,
                           capacity: s.capacity,
                           instructor: s.instructor,
+                          assignedInstructorId: s.assignedInstructorId,
                           canceled: s.canceled,
                           seriesId: s.seriesId,
                           locationId: s.locationId,
@@ -406,6 +424,12 @@ export default async function CalendarPage({
                           id: l.id,
                           name: l.name,
                         }))}
+                        instructors={instructors.map((i) => ({ id: i.id, name: i.name }))}
+                        assignedInstructorName={
+                          s.assignedInstructorId
+                            ? instructorNameById.get(s.assignedInstructorId) ?? null
+                            : null
+                        }
                         booked={activeBookings.length}
                         dayLabel={formatDay(s.startsAt)}
                         timeLabel={formatTime(s.startsAt)}

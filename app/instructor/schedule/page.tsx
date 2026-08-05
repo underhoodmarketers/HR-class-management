@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, eq, gte, gt, lt, inArray } from "drizzle-orm";
+import { and, eq, gte, gt, lt, inArray, or, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, instructorLocations } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
@@ -75,10 +75,18 @@ export default async function InstructorSchedulePage({
   // branching — keeps TypeScript's inference simple and the code shorter.
   const locationFilter = hasLocations ? myLocationIds : [-1];
 
+  // A class with no specific instructor assigned is visible to any
+  // instructor at that studio; otherwise it's visible only to the assignee.
+  const visibleToMe = or(
+    isNull(classSessions.assignedInstructorId),
+    eq(classSessions.assignedInstructorId, session.userId)
+  );
+
   const [upNext, gridSessions, agendaSessions] = await Promise.all([
     db.query.classSessions.findFirst({
       where: and(
         inArray(classSessions.locationId, locationFilter),
+        visibleToMe,
         gt(classSessions.startsAt, now),
         eq(classSessions.canceled, false)
       ),
@@ -88,6 +96,7 @@ export default async function InstructorSchedulePage({
     db.query.classSessions.findMany({
       where: and(
         inArray(classSessions.locationId, locationFilter),
+        visibleToMe,
         gte(classSessions.startsAt, gridStart),
         lt(classSessions.startsAt, gridEnd)
       ),
@@ -97,6 +106,7 @@ export default async function InstructorSchedulePage({
     db.query.classSessions.findMany({
       where: and(
         inArray(classSessions.locationId, locationFilter),
+        visibleToMe,
         gte(classSessions.startsAt, dayStart),
         lt(classSessions.startsAt, dayEnd)
       ),

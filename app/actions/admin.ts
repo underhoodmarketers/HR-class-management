@@ -93,6 +93,9 @@ export async function createSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
+  // Which instructor account can see this in their portal — null means any
+  // instructor assigned to the studio can see it.
+  const assignedInstructorId = Number(formData.get("assignedInstructorId")) || null;
 
   // Optional: repeat weekly through this date. Blank = just the picked date(s), once.
   const endDateValue = String(formData.get("endDate") || "");
@@ -143,6 +146,7 @@ export async function createSession(formData: FormData) {
         endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
         capacity,
         instructor,
+        assignedInstructorId,
         seriesId: null as string | null,
       });
     }
@@ -170,6 +174,7 @@ export async function editSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const instructor = String(formData.get("instructor") || "") || null;
+  const assignedInstructorId = Number(formData.get("assignedInstructorId")) || null;
   const locationId = Number(formData.get("locationId"));
 
   const existing = await db.query.classSessions.findFirst({
@@ -202,6 +207,7 @@ export async function editSession(formData: FormData) {
           endsAt: new Date(s.getTime() + durationMin * 60 * 1000),
           capacity,
           instructor,
+          assignedInstructorId,
           locationId: locationId || sib.locationId,
         })
         .where(eq(classSessions.id, sib.id));
@@ -218,6 +224,7 @@ export async function editSession(formData: FormData) {
       endsAt: new Date(start.getTime() + durationMin * 60 * 1000),
       capacity,
       instructor,
+      assignedInstructorId,
       locationId: locationId || existing.locationId,
       // Editing a single class detaches it so future series edits skip it.
       seriesId: scope === "one" ? null : existing.seriesId,
