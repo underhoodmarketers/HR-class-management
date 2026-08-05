@@ -55,31 +55,43 @@ export default function ZelleButton({
             <form action={requestZellePayment} className="space-y-3">
               <input type="hidden" name="packageId" value={packageId} />
               <div>
-                <div className="mb-1.5 flex items-center gap-1.5">
+                <div className="relative mb-1.5 flex items-center gap-1.5">
                   <label className="label mb-0">Zelle confirmation number</label>
                   <button
                     type="button"
                     onClick={() => setShowHelp((v) => !v)}
-                    className="flex h-4 w-4 items-center justify-center rounded-full bg-ink/10 text-[10px] font-bold text-ink/60 hover:bg-ink/20"
+                    className="flex h-5 w-5 items-center justify-center rounded-full border border-magenta bg-white text-xs font-bold text-magenta shadow-sm transition hover:bg-magenta hover:text-white"
                     aria-label="Where do I find this?"
                   >
                     ?
                   </button>
+
+                  {showHelp ? (
+                    <div className="absolute left-0 top-full z-20 mt-2 w-72 max-w-[80vw] rounded-xl border border-ink/10 bg-white p-3 text-xs text-ink/60 shadow-card">
+                      <div className="mb-1.5 flex items-start justify-between gap-2">
+                        <p>
+                          Open your banking app, tap{" "}
+                          <span className="font-600 text-ink/80">&quot;See all transactions,&quot;</span>{" "}
+                          find your Zelle payment to us, and copy the number shown next to the
+                          recipient name.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowHelp(false)}
+                          className="shrink-0 rounded-full px-1.5 py-0.5 text-ink/40 hover:bg-ink/5"
+                          aria-label="Close"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <img
+                        src="/zelle-confirmation-example.png"
+                        alt="Example bank transaction showing the Zelle confirmation number circled"
+                        className="w-full rounded-lg border border-ink/10"
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                {showHelp ? (
-                  <div className="mb-2 rounded-xl border border-ink/10 bg-cream p-3 text-xs text-ink/60">
-                    <p>
-                      Open your banking app, tap <span className="font-600">&quot;See all transactions,&quot;</span>{" "}
-                      find your Zelle payment to us, and copy the number shown next to the
-                      recipient name.
-                    </p>
-                    <img
-                      src="/zelle-confirmation-example.png"
-                      alt="Example bank transaction showing the Zelle confirmation number circled"
-                      className="mt-2 w-full rounded-lg border border-ink/10"
-                    />
-                  </div>
-                ) : null}
                 <input
                   name="confirmationNumber"
                   className="input"
