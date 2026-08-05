@@ -11,6 +11,9 @@ import {
   addStudioDays,
   studioWeekday,
   studioDateKey,
+  parseMonthKey,
+  shiftMonthKey,
+  monthLabel,
 } from "@/lib/utils";
 import WeekdayPicker from "@/components/WeekdayPicker";
 import SessionRow from "@/components/SessionRow";
@@ -18,27 +21,6 @@ import SessionRow from "@/components/SessionRow";
 export const dynamic = "force-dynamic";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function parseMonthKey(value: string | undefined, fallback: string) {
-  return value && /^\d{4}-\d{2}$/.test(value) ? value : fallback;
-}
-
-function shiftMonthKey(monthKey: string, delta: number) {
-  const [y, m] = monthKey.split("-").map(Number);
-  const total = y * 12 + (m - 1) + delta;
-  const ny = Math.floor(total / 12);
-  const nm = (total % 12) + 1;
-  return `${ny}-${String(nm).padStart(2, "0")}`;
-}
-
-function monthLabel(monthKey: string) {
-  const [y, m] = monthKey.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 export default async function CalendarPage({
   searchParams,

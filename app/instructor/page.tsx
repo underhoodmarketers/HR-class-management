@@ -2,11 +2,13 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
+import { formatDay, formatDob } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function InstructorCustomersPage() {
   const session = await requireInstructor();
+  const now = new Date();
 
   const myLocations = await db.query.instructorLocations.findMany({
     where: eq(instructorLocations.userId, session.userId),
@@ -56,21 +58,48 @@ export default async function InstructorCustomersPage() {
               <tr>
                 <th className="px-5 py-3 font-semibold">Name</th>
                 <th className="px-5 py-3 font-semibold">Contact</th>
+                <th className="px-5 py-3 font-semibold">Membership</th>
+                <th className="px-5 py-3 font-semibold">Expires</th>
+                <th className="px-5 py-3 font-semibold">Birthday</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/5">
-              {scoped.map((c) => (
-                <tr key={c.id}>
-                  <td className="px-5 py-3 font-medium">{c.name}</td>
-                  <td className="px-5 py-3 text-ink/60">
-                    <div>{c.email}</div>
-                    <div className="text-xs text-ink/40">{c.phone || "—"}</div>
-                  </td>
-                </tr>
-              ))}
+              {scoped.map((c) => {
+                const activeMemberships = c.memberships.filter(
+                  (m) => m.status === "active" && m.endsAt > now
+                );
+                return (
+                  <tr key={c.id}>
+                    <td className="px-5 py-3 font-medium">{c.name}</td>
+                    <td className="px-5 py-3 text-ink/60">
+                      <div>{c.email}</div>
+                      <div className="text-xs text-ink/40">{c.phone || "—"}</div>
+                    </td>
+                    <td className="px-5 py-3 text-ink/60">
+                      {activeMemberships.length > 0 ? (
+                        activeMemberships.map((m) => (
+                          <div key={m.id}>{m.package.name}</div>
+                        ))
+                      ) : (
+                        <span className="text-ink/40">None</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-ink/60">
+                      {activeMemberships.length > 0 ? (
+                        activeMemberships.map((m) => (
+                          <div key={m.id}>{formatDay(m.endsAt)}</div>
+                        ))
+                      ) : (
+                        <span className="text-ink/40">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-ink/60">{formatDob(c.dob)}</td>
+                  </tr>
+                );
+              })}
               {scoped.length === 0 ? (
                 <tr>
-                  <td colSpan={2} className="px-5 py-8 text-center text-ink/40">
+                  <td colSpan={5} className="px-5 py-8 text-center text-ink/40">
                     No customers at your studio yet.
                   </td>
                 </tr>

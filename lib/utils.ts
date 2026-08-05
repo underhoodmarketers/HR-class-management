@@ -173,6 +173,27 @@ export function formatDateTimeLocalValue(d: Date) {
   )}`;
 }
 
+export function parseMonthKey(value: string | undefined, fallback: string) {
+  return value && /^\d{4}-\d{2}$/.test(value) ? value : fallback;
+}
+
+export function shiftMonthKey(monthKey: string, delta: number) {
+  const [y, m] = monthKey.split("-").map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
+}
+
+export function monthLabel(monthKey: string) {
+  const [y, m] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function formatDob(dob: string | null) {
   if (!dob) return "—";
   // dob is stored as a plain "yyyy-mm-dd" date with no timezone.
