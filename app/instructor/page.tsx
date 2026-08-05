@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
-import { formatDay, formatDob } from "@/lib/utils";
+import { formatDay, formatBirthday } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +93,7 @@ export default async function InstructorCustomersPage() {
                         <span className="text-ink/40">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-ink/60">{formatDob(c.dob)}</td>
+                    <td className="px-5 py-3 text-ink/60">{formatBirthday(c.dob)}</td>
                   </tr>
                 );
               })}

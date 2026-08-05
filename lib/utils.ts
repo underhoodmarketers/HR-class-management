@@ -194,6 +194,17 @@ export function monthLabel(monthKey: string) {
   });
 }
 
+/** Day + month only, no year or age — for views that shouldn't see either. */
+export function formatBirthday(dob: string | null) {
+  if (!dob) return "—";
+  const [y, m, d] = dob.split("-").map(Number);
+  if (!y || !m || !d) return dob;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function formatDob(dob: string | null) {
   if (!dob) return "—";
   // dob is stored as a plain "yyyy-mm-dd" date with no timezone.
