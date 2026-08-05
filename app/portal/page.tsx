@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { bookings } from "@/db/schema";
+import { bookings, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
-import { formatDay, formatTime } from "@/lib/utils";
+import { getCurrentMonthLeaderboard, getLastMonthWinners } from "@/lib/leaderboard";
+import { formatDay, formatTime, isBirthdayToday } from "@/lib/utils";
+import Leaderboard from "@/components/Leaderboard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +16,20 @@ export default async function PortalHome({
   searchParams: { purchase?: string };
 }) {
   const session = await requireUser();
-  const active = await getActiveMembership(session.userId);
+
+  const [active, profile, current, lastMonth] = await Promise.all([
+    getActiveMembership(session.userId),
+    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
+    getCurrentMonthLeaderboard(),
+    getLastMonthWinners(),
+  ]);
   const now = new Date();
+
+  const myLocationBoards = current.boards.filter((b) => b.locationId === profile?.locationId);
+  const myLocationLastMonth = {
+    label: lastMonth.label,
+    winners: lastMonth.winners.filter((w) => w.locationId === profile?.locationId),
+  };
 
   const myBookings = await db.query.bookings.findMany({
     where: and(eq(bookings.userId, session.userId), eq(bookings.status, "booked")),
@@ -29,8 +43,19 @@ export default async function PortalHome({
       .filter((b) => b.session.startsAt > now && !b.session.canceled)
       .sort((a, b) => a.session.startsAt.getTime() - b.session.startsAt.getTime())[0] ?? null;
 
+  const isBirthday = profile?.dob ? isBirthdayToday(profile.dob) : false;
+
   return (
     <div className="space-y-6">
+      {isBirthday ? (
+        <div className="rounded-2xl border border-magenta/20 bg-gradient-to-r from-blush to-cream p-5 text-center">
+          <p className="font-display text-xl font-600 text-magenta-deep">
+            🎉 Happy Birthday, {session.name.split(" ")[0]}! 🎉
+          </p>
+          <p className="mt-1 text-sm text-ink/60">Wishing you a wonderful day from all of us.</p>
+        </div>
+      ) : null}
+
       {searchParams.purchase === "success" ? (
         <div className="rounded-2xl bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
           Payment received — your membership is active. Time to book a class!
@@ -92,6 +117,22 @@ export default async function PortalHome({
           </Link>
         </div>
       </div>
+
+      {myLocationBoards.length > 0 ? (
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-600">Your studio's leaderboard</h2>
+            <Link href="/portal/leaderboard" className="text-sm font-semibold text-magenta">
+              All studios →
+            </Link>
+          </div>
+          <Leaderboard
+            currentLabel={current.label}
+            boards={myLocationBoards}
+            lastMonth={myLocationLastMonth}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

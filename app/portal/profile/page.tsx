@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { locations, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
-import { formatDay, studioDateKey } from "@/lib/utils";
+import { formatDay, isBirthdayToday } from "@/lib/utils";
 import EditProfileCard from "@/components/EditProfileCard";
 import ChangePasswordCard from "@/components/ChangePasswordCard";
 
@@ -106,12 +106,4 @@ export default async function ProfilePage({
       <ChangePasswordCard redirectTo="/portal/profile" />
     </div>
   );
-}
-
-/** True if a "yyyy-mm-dd" dob's month+day match today, in studio time. */
-function isBirthdayToday(dob: string) {
-  const [, m, d] = dob.split("-").map(Number);
-  const today = studioDateKey(new Date());
-  const [, tm, td] = today.split("-").map(Number);
-  return m === tm && d === td;
 }

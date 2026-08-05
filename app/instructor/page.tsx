@@ -28,7 +28,7 @@ export default async function InstructorDashboardPage() {
     eq(classSessions.assignedInstructorId, session.userId)
   );
 
-  const [customers, upNext] = await Promise.all([
+  const [customers, upcomingSessions] = await Promise.all([
     db.query.users.findMany({
       where: eq(users.role, "customer"),
       with: {
@@ -36,7 +36,7 @@ export default async function InstructorDashboardPage() {
       },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
-    db.query.classSessions.findFirst({
+    db.query.classSessions.findMany({
       where: and(
         inArray(classSessions.locationId, locationFilter),
         visibleToMe,
@@ -48,17 +48,28 @@ export default async function InstructorDashboardPage() {
     }),
   ]);
 
+  const upNext = upcomingSessions[0] ?? null;
+  const customersBookedCount = new Set(
+    upcomingSessions.flatMap((s) =>
+      s.bookings.filter((b) => b.status === "booked").map((b) => b.userId)
+    )
+  ).size;
+
+  // A membership "covers" your studio if its package has no location
+  // restriction, or explicitly includes one of your studios.
+  const covers = (m: (typeof customers)[number]["memberships"][number]) =>
+    m.package.locations.length === 0 ||
+    m.package.locations.some((pl) => myLocationIdSet.has(pl.locationId));
+
   // A customer is "yours" if any membership's package includes one of your
   // studios, or the package has no studio restriction (valid everywhere).
-  const scoped = customers.filter((c) =>
-    c.memberships.some((m) => {
-      const pkgLocations = m.package.locations;
-      return (
-        pkgLocations.length === 0 ||
-        pkgLocations.some((pl) => myLocationIdSet.has(pl.locationId))
-      );
-    })
-  );
+  const scoped = customers.filter((c) => c.memberships.some(covers));
+
+  const activeMembershipCount = scoped.filter((c) =>
+    c.memberships.some(
+      (m) => m.status === "active" && m.endsAt.getTime() > now.getTime() && covers(m)
+    )
+  ).length;
 
   const birthdaysThisWeek = scoped
     .filter((c) => c.dob && daysUntilBirthday(c.dob) <= 6)
@@ -94,10 +105,22 @@ export default async function InstructorDashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="card p-5">
               <p className="text-sm text-ink/50">Customers at your studio</p>
               <p className="mt-1 font-display text-3xl font-600 text-magenta">{scoped.length}</p>
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-ink/50">Customers with an active membership</p>
+              <p className="mt-1 font-display text-3xl font-600 text-magenta">
+                {activeMembershipCount}
+              </p>
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-ink/50">Customers booked (upcoming classes)</p>
+              <p className="mt-1 font-display text-3xl font-600 text-magenta">
+                {customersBookedCount}
+              </p>
             </div>
             <div className="card p-5">
               <p className="text-sm text-ink/50">Booked for your next class</p>

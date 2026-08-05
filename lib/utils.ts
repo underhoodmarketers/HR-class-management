@@ -205,6 +205,14 @@ export function formatBirthday(dob: string | null) {
   });
 }
 
+/** True if a "yyyy-mm-dd" dob's month+day match today, in studio time. */
+export function isBirthdayToday(dob: string): boolean {
+  const [, m, d] = dob.split("-").map(Number);
+  const today = studioDateKey(new Date());
+  const [, tm, td] = today.split("-").map(Number);
+  return m === tm && d === td;
+}
+
 /** Days (studio time) until dob's next month/day occurrence, 0 if today. */
 export function daysUntilBirthday(dob: string): number {
   const [, m, d] = dob.split("-").map(Number);
