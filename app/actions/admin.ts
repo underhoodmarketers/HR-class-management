@@ -21,7 +21,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
-import { getActiveMembership } from "@/lib/queries";
+import { getActiveMembership, rolloverUnusedCredits } from "@/lib/queries";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -55,22 +55,42 @@ async function refundBookingsForSessions(sessionIds: number[]) {
 
   if (affected.length === 0) return 0;
 
+  const sessionIdList = sql.join(
+    sessionIds.map((id) => sql`${id}`),
+    sql`, `
+  );
+
+  // Refund membership credits — only for bookings that didn't draw from
+  // the makeup pool.
   await db.execute(sql`
     UPDATE memberships m
     SET credits_remaining = m.credits_remaining + sub.refunds
     FROM (
       SELECT membership_id, COUNT(*)::int AS refunds
       FROM bookings
-      WHERE session_id IN (${sql.join(
-        sessionIds.map((id) => sql`${id}`),
-        sql`, `
-      )})
+      WHERE session_id IN (${sessionIdList})
         AND status = 'booked'
         AND membership_id IS NOT NULL
+        AND from_makeup_credit = false
       GROUP BY membership_id
     ) sub
     WHERE m.id = sub.membership_id
       AND m.credits_remaining IS NOT NULL
+  `);
+
+  // Refund makeup credits — for bookings that did.
+  await db.execute(sql`
+    UPDATE users u
+    SET makeup_credits = u.makeup_credits + sub.refunds
+    FROM (
+      SELECT user_id, COUNT(*)::int AS refunds
+      FROM bookings
+      WHERE session_id IN (${sessionIdList})
+        AND status = 'booked'
+        AND from_makeup_credit = true
+      GROUP BY user_id
+    ) sub
+    WHERE u.id = sub.user_id
   `);
 
   await db
@@ -311,9 +331,27 @@ export async function adminBookClass(formData: FormData) {
   const active = await getActiveMembership(userId);
   const membershipId = active?.membership.id ?? null;
 
-  await db.insert(bookings).values({ userId, sessionId, membershipId, status: "booked" });
+  // If the active membership's own credits are exhausted, borrow from the
+  // makeup pool instead of skipping the deduction entirely.
+  let fromMakeupCredit = false;
+  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { makeupCredits: true },
+    });
+    fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
+  }
 
-  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
+  await db
+    .insert(bookings)
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
+
+  if (fromMakeupCredit) {
+    await db
+      .update(users)
+      .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
+      .where(eq(users.id, userId));
+  } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db
       .update(memberships)
       .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
@@ -673,6 +711,63 @@ export async function updateCustomer(formData: FormData) {
   redirect(`/admin/customers/${id}?updated=1`);
 }
 
+export async function updateMembership(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const customerId = Number(formData.get("customerId"));
+  if (!id || !customerId) redirect("/admin/customers?error=invalid");
+
+  const packageId = Number(formData.get("packageId"));
+  const status = String(formData.get("status") || "active");
+  const creditsRaw = String(formData.get("creditsRemaining") || "").trim();
+  const creditsRemaining = creditsRaw === "" ? null : Number(creditsRaw);
+  const startsAtValue = String(formData.get("startsAt") || "");
+  const endsAtValue = String(formData.get("endsAt") || "");
+  const billingType = String(formData.get("billingType") || "one_time");
+
+  const startsAt = fromStudioTime(`${startsAtValue}T00:00`);
+  const endsAt = fromStudioTime(`${endsAtValue}T23:59`);
+
+  const invalid =
+    !packageId ||
+    !["active", "expired", "pending"].includes(status) ||
+    isNaN(startsAt.getTime()) ||
+    isNaN(endsAt.getTime()) ||
+    endsAt.getTime() < startsAt.getTime() ||
+    (creditsRaw !== "" && (isNaN(creditsRemaining as number) || (creditsRemaining as number) < 0));
+  if (invalid) {
+    redirect(`/admin/customers/${customerId}?error=membership_invalid`);
+  }
+
+  await db
+    .update(memberships)
+    .set({ packageId, status, creditsRemaining, startsAt, endsAt, billingType })
+    .where(and(eq(memberships.id, id), eq(memberships.userId, customerId)));
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?membership_updated=1`);
+}
+
+export async function updateMakeupCredits(formData: FormData) {
+  await requireAdmin();
+  const customerId = Number(formData.get("customerId"));
+  if (!customerId) redirect("/admin/customers?error=invalid");
+
+  const raw = String(formData.get("makeupCredits") || "").trim();
+  const makeupCredits = Number(raw);
+  if (raw === "" || isNaN(makeupCredits) || makeupCredits < 0 || !Number.isInteger(makeupCredits)) {
+    redirect(`/admin/customers/${customerId}?error=makeup_invalid`);
+  }
+
+  await db
+    .update(users)
+    .set({ makeupCredits })
+    .where(and(eq(users.id, customerId), eq(users.role, "customer")));
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?makeup_updated=1`);
+}
+
 export async function deleteCustomer(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));
@@ -773,6 +868,7 @@ export async function approveZellePayment(formData: FormData) {
   const endsAt = new Date(
     startsAt.getTime() + request.package.durationDays * 24 * 60 * 60 * 1000
   );
+  await rolloverUnusedCredits(request.userId);
   const [membership] = await db
     .insert(memberships)
     .values({

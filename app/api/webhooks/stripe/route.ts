@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { db } from "@/db";
 import { memberships, packages } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
+import { rolloverUnusedCredits } from "@/lib/queries";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
           const endsAt = new Date(
             startsAt.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000
           );
+          await rolloverUnusedCredits(userId);
           await db.insert(memberships).values({
             userId,
             packageId,
@@ -95,6 +97,7 @@ export async function POST(req: NextRequest) {
             const endsAt = new Date(
               startsAt.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000
             );
+            await rolloverUnusedCredits(userId);
             await db.insert(memberships).values({
               userId,
               packageId,

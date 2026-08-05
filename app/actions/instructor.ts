@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { bookings, classSessions, instructorLocations, memberships } from "@/db/schema";
+import { bookings, classSessions, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
 
@@ -50,9 +50,27 @@ export async function instructorBookClass(formData: FormData) {
   const active = await getActiveMembership(userId);
   const membershipId = active?.membership.id ?? null;
 
-  await db.insert(bookings).values({ userId, sessionId, membershipId, status: "booked" });
+  // If the active membership's own credits are exhausted, borrow from the
+  // makeup pool instead of skipping the deduction entirely.
+  let fromMakeupCredit = false;
+  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { makeupCredits: true },
+    });
+    fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
+  }
 
-  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
+  await db
+    .insert(bookings)
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
+
+  if (fromMakeupCredit) {
+    await db
+      .update(users)
+      .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
+      .where(eq(users.id, userId));
+  } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db
       .update(memberships)
       .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })

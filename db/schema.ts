@@ -27,6 +27,10 @@ export const users = pgTable("users", {
   // Preferred home studio, collected at signup. Required for new customer
   // signups at the app level; nullable here since older accounts predate it.
   locationId: integer("location_id").references(() => locations.id),
+  // Banked "makeup class" credits — leftover credits swept in from a prior
+  // package when a new one is bought. Never expire; drawn on only once a
+  // membership's own per-cycle credits are exhausted.
+  makeupCredits: integer("makeup_credits").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -157,6 +161,10 @@ export const bookings = pgTable(
       onDelete: "set null",
     }),
     status: varchar("status", { length: 16 }).notNull().default("booked"), // booked | canceled
+    // True when this booking's credit was drawn from the user's makeup
+    // credit pool (membershipId's own credits were exhausted at booking
+    // time) — determines where a cancellation refund goes.
+    fromMakeupCredit: boolean("from_makeup_credit").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ uniq: index("bookings_user_session_idx").on(t.userId, t.sessionId) })

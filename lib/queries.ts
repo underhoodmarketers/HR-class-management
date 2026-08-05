@@ -1,7 +1,7 @@
 import "server-only";
-import { and, eq, gt, desc, asc } from "drizzle-orm";
+import { and, eq, gt, desc, asc, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships } from "@/db/schema";
+import { memberships, users } from "@/db/schema";
 
 export async function getActiveMembership(userId: number) {
   const now = new Date();
@@ -32,4 +32,36 @@ export async function getActiveMemberships(userId: number) {
     with: { package: true },
     orderBy: [asc(memberships.endsAt)],
   });
+}
+
+/**
+ * Sweeps any unused (non-unlimited) credits sitting on a customer's existing
+ * memberships into their never-expiring makeup credit pool, then zeroes
+ * those memberships out so the same credits can't be used twice. Call this
+ * right before creating a new membership for the customer — "any credits
+ * left roll over when a new package is bought."
+ */
+export async function rolloverUnusedCredits(userId: number): Promise<void> {
+  const leftover = await db
+    .select({ id: memberships.id, creditsRemaining: memberships.creditsRemaining })
+    .from(memberships)
+    .where(and(eq(memberships.userId, userId), gt(memberships.creditsRemaining, 0)));
+  if (leftover.length === 0) return;
+
+  const total = leftover.reduce((sum, m) => sum + (m.creditsRemaining ?? 0), 0);
+
+  await db
+    .update(users)
+    .set({ makeupCredits: sql`${users.makeupCredits} + ${total}` })
+    .where(eq(users.id, userId));
+
+  await db
+    .update(memberships)
+    .set({ creditsRemaining: 0 })
+    .where(
+      inArray(
+        memberships.id,
+        leftover.map((m) => m.id)
+      )
+    );
 }
