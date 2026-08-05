@@ -16,6 +16,8 @@ import {
   users,
   waiverSignatures,
   waiverTemplate,
+  zellePayments,
+  zelleSettings,
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
@@ -709,4 +711,77 @@ export async function deleteInstructor(formData: FormData) {
   await db.delete(users).where(and(eq(users.id, id), eq(users.role, "instructor")));
   revalidatePath("/admin/instructors");
   redirect("/admin/instructors?deleted=1");
+}
+
+// ---------- Zelle payments ----------
+export async function updateZelleSettings(formData: FormData) {
+  await requireAdmin();
+  const recipient = String(formData.get("recipient") || "").trim();
+  const instructions = String(formData.get("instructions") || "").trim() || null;
+  if (!recipient) {
+    redirect("/admin/zelle?error=invalid");
+  }
+
+  const current = await db.query.zelleSettings.findFirst();
+  if (current) {
+    await db
+      .update(zelleSettings)
+      .set({ recipient, instructions, updatedAt: new Date() })
+      .where(eq(zelleSettings.id, current.id));
+  } else {
+    await db.insert(zelleSettings).values({ recipient, instructions });
+  }
+
+  revalidatePath("/admin/zelle");
+  revalidatePath("/portal/packages");
+  redirect("/admin/zelle?saved=1");
+}
+
+export async function approveZellePayment(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+
+  const request = await db.query.zellePayments.findFirst({
+    where: eq(zellePayments.id, id),
+    with: { package: true },
+  });
+  if (!request || request.status !== "pending") return;
+
+  const startsAt = new Date();
+  const endsAt = new Date(
+    startsAt.getTime() + request.package.durationDays * 24 * 60 * 60 * 1000
+  );
+  const [membership] = await db
+    .insert(memberships)
+    .values({
+      userId: request.userId,
+      packageId: request.packageId,
+      status: "active",
+      creditsRemaining: request.package.credits,
+      startsAt,
+      endsAt,
+      billingType: "zelle",
+    })
+    .returning();
+
+  await db
+    .update(zellePayments)
+    .set({ status: "approved", membershipId: membership.id, reviewedAt: new Date() })
+    .where(eq(zellePayments.id, id));
+
+  revalidatePath("/admin/zelle");
+  revalidatePath("/portal/packages");
+}
+
+export async function rejectZellePayment(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  await db
+    .update(zellePayments)
+    .set({ status: "rejected", reviewedAt: new Date() })
+    .where(and(eq(zellePayments.id, id), eq(zellePayments.status, "pending")));
+  revalidatePath("/admin/zelle");
+  revalidatePath("/portal/packages");
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import BuyButton from "@/components/BuyButton";
+import ZelleButton from "@/components/ZelleButton";
 import { type BillingType } from "@/app/actions/checkout";
 import { formatMoney, stripeFeeCents } from "@/lib/utils";
 
@@ -22,6 +23,8 @@ export default function PackageTierCard({
   highlighted,
   initialVariantId,
   autoOpenBillingType,
+  zelleRecipient,
+  zelleInstructions,
 }: {
   tierName: string;
   perWeekLabel: string;
@@ -29,6 +32,8 @@ export default function PackageTierCard({
   highlighted?: boolean;
   initialVariantId?: number;
   autoOpenBillingType?: BillingType | null;
+  zelleRecipient: string | null;
+  zelleInstructions: string | null;
 }) {
   const initialIndex = Math.max(
     0,
@@ -103,6 +108,16 @@ export default function PackageTierCard({
             className="btn-ghost w-full"
             autoOpen={isTarget && autoOpenBillingType === "recurring"}
           />
+        ) : null}
+        <ZelleButton
+          packageId={v.id}
+          priceCents={v.priceCents}
+          recipient={zelleRecipient}
+          instructions={zelleInstructions}
+          className="btn-subtle w-full"
+        />
+        {zelleRecipient ? (
+          <p className="text-center text-xs text-ink/40">No processing fee via Zelle</p>
         ) : null}
       </div>
     </div>

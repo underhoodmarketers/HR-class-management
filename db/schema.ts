@@ -156,6 +156,35 @@ export const bookings = pgTable(
   (t) => ({ uniq: index("bookings_user_session_idx").on(t.userId, t.sessionId) })
 );
 
+// ---------- Zelle payments (manual, off-platform payment method) ----------
+// Where to send Zelle payments, editable by the admin. Single row.
+export const zelleSettings = pgTable("zelle_settings", {
+  id: serial("id").primaryKey(),
+  recipient: varchar("recipient", { length: 200 }).notNull(),
+  instructions: text("instructions"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A customer's self-reported Zelle payment, pending admin verification
+// against their actual bank activity before a membership is granted.
+export const zellePayments = pgTable("zelle_payments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  packageId: integer("package_id")
+    .notNull()
+    .references(() => packages.id),
+  amountCents: integer("amount_cents").notNull(),
+  confirmationNumber: varchar("confirmation_number", { length: 100 }),
+  status: varchar("status", { length: 16 }).notNull().default("pending"), // pending | approved | rejected
+  membershipId: integer("membership_id").references(() => memberships.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+});
+
 // ---------- Waiver template + signatures ----------
 export const waiverTemplate = pgTable("waiver_template", {
   id: serial("id").primaryKey(),
@@ -181,7 +210,17 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   bookings: many(bookings),
   signatures: many(waiverSignatures),
   instructorLocations: many(instructorLocations),
+  zellePayments: many(zellePayments),
   location: one(locations, { fields: [users.locationId], references: [locations.id] }),
+}));
+
+export const zellePaymentsRelations = relations(zellePayments, ({ one }) => ({
+  user: one(users, { fields: [zellePayments.userId], references: [users.id] }),
+  package: one(packages, { fields: [zellePayments.packageId], references: [packages.id] }),
+  membership: one(memberships, {
+    fields: [zellePayments.membershipId],
+    references: [memberships.id],
+  }),
 }));
 
 export const instructorLocationsRelations = relations(instructorLocations, ({ one }) => ({

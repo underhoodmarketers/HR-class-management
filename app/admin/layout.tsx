@@ -11,6 +11,7 @@ const nav = [
   { href: "/admin/instructors", label: "Instructors" },
   { href: "/admin/packages", label: "Packages" },
   { href: "/admin/promo-codes", label: "Promo codes" },
+  { href: "/admin/zelle", label: "Zelle payments" },
   { href: "/admin/locations", label: "Studios & classes" },
   { href: "/admin/waiver", label: "Waiver" },
 ];

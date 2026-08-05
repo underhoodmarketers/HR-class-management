@@ -1,18 +1,19 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { packages } from "@/db/schema";
+import { packages, zellePayments } from "@/db/schema";
 import { formatMoney, daysUntil, stripeFeeCents } from "@/lib/utils";
 import { requireUser } from "@/lib/guards";
 import { getActiveMemberships } from "@/lib/queries";
 import PackageTierCard from "@/components/PackageTierCard";
 import BuyButton from "@/components/BuyButton";
+import ZelleButton from "@/components/ZelleButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalPackages({
   searchParams,
 }: {
-  searchParams: { package?: string; billing?: string };
+  searchParams: { package?: string; billing?: string; zelleRequested?: string };
 }) {
   const session = await requireUser();
   const highlightId = Number(searchParams.package) || null;
@@ -21,14 +22,22 @@ export default async function PortalPackages({
       ? searchParams.billing
       : null;
 
-  const [pkgs, activeMemberships] = await Promise.all([
+  const [pkgs, activeMemberships, zelleSettingsRow, myZellePayments] = await Promise.all([
     db.query.packages.findMany({
       where: eq(packages.active, true),
       with: { locations: { with: { location: true } } },
       orderBy: (p, { asc }) => [asc(p.priceCents)],
     }),
     getActiveMemberships(session.userId),
+    db.query.zelleSettings.findFirst(),
+    db.query.zellePayments.findMany({
+      where: eq(zellePayments.userId, session.userId),
+      with: { package: true },
+      orderBy: [desc(zellePayments.createdAt)],
+      limit: 5,
+    }),
   ]);
+  const pendingZellePayments = myZellePayments.filter((z) => z.status === "pending");
 
   // Packages named "Tier — Duration" (e.g. "Starter — 3 Months") are grouped
   // into one card per tier with a duration switcher. Anything else (like the
@@ -54,6 +63,27 @@ export default async function PortalPackages({
         <h1 className="font-display text-3xl font-600">Packages</h1>
         <p className="text-sm text-ink/50">Pick a plan and pay securely by card.</p>
       </div>
+
+      {searchParams.zelleRequested ? (
+        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
+          Thanks — we&apos;ll verify your Zelle payment and activate your membership shortly.
+        </div>
+      ) : null}
+
+      {pendingZellePayments.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700">
+            Pending Zelle {pendingZellePayments.length === 1 ? "payment" : "payments"}
+          </p>
+          <ul className="space-y-1 text-sm text-amber-800">
+            {pendingZellePayments.map((z) => (
+              <li key={z.id}>
+                {z.package.name} · {formatMoney(z.amountCents)} · awaiting verification
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {activeMemberships.length > 0 ? (
         <div className="rounded-2xl border border-magenta/15 bg-blush/40 p-5">
@@ -90,6 +120,8 @@ export default async function PortalPackages({
             highlighted={variants.some((p) => p.id === highlightId)}
             initialVariantId={highlightId ?? undefined}
             autoOpenBillingType={autoOpenBillingType}
+            zelleRecipient={zelleSettingsRow?.recipient ?? null}
+            zelleInstructions={zelleSettingsRow?.instructions ?? null}
             variants={variants.map((p) => ({
               id: p.id,
               durationLabel: p.name.split(" — ")[1],
@@ -126,13 +158,25 @@ export default async function PortalPackages({
                   : "All studios"}
               </li>
             </ul>
-            <BuyButton
-              packageId={p.id}
-              billingType="one_time"
-              label="Buy now"
-              className="btn-primary mt-6 w-full"
-              autoOpen={p.id === highlightId && autoOpenBillingType === "one_time"}
-            />
+            <div className="mt-6 flex flex-col gap-2">
+              <BuyButton
+                packageId={p.id}
+                billingType="one_time"
+                label="Buy now"
+                className="btn-primary w-full"
+                autoOpen={p.id === highlightId && autoOpenBillingType === "one_time"}
+              />
+              <ZelleButton
+                packageId={p.id}
+                priceCents={p.priceCents}
+                recipient={zelleSettingsRow?.recipient ?? null}
+                instructions={zelleSettingsRow?.instructions ?? null}
+                className="btn-subtle w-full"
+              />
+              {zelleSettingsRow?.recipient ? (
+                <p className="text-center text-xs text-ink/40">No processing fee via Zelle</p>
+              ) : null}
+            </div>
           </div>
         ))}
 
