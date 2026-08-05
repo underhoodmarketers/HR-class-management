@@ -54,14 +54,12 @@ export default function ZelleButton({
             <form action={requestZellePayment} className="space-y-3">
               <input type="hidden" name="packageId" value={packageId} />
               <div>
-                <label className="label">
-                  Zelle confirmation number{" "}
-                  <span className="font-400 text-ink/40">(if you have it)</span>
-                </label>
+                <label className="label">Zelle confirmation number</label>
                 <input
                   name="confirmationNumber"
                   className="input"
                   placeholder="e.g. 30284130028"
+                  required
                 />
               </div>
               <p className="text-xs text-ink/40">

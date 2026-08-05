@@ -12,6 +12,10 @@ export async function requestZellePayment(formData: FormData) {
   const packageId = Number(formData.get("packageId"));
   const confirmationNumber = String(formData.get("confirmationNumber") || "").trim() || null;
 
+  if (!confirmationNumber) {
+    redirect("/portal/packages?error=zelle_confirmation_required");
+  }
+
   const pkg = await db.query.packages.findFirst({
     where: eq(packages.id, packageId),
   });

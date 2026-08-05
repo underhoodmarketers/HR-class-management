@@ -10,10 +10,15 @@ import ZelleButton from "@/components/ZelleButton";
 
 export const dynamic = "force-dynamic";
 
+const errorMessages: Record<string, string> = {
+  unavailable: "That package is no longer available.",
+  zelle_confirmation_required: "Enter your Zelle confirmation number to submit for review.",
+};
+
 export default async function PortalPackages({
   searchParams,
 }: {
-  searchParams: { package?: string; billing?: string; zelleRequested?: string };
+  searchParams: { package?: string; billing?: string; zelleRequested?: string; error?: string };
 }) {
   const session = await requireUser();
   const highlightId = Number(searchParams.package) || null;
@@ -63,6 +68,12 @@ export default async function PortalPackages({
         <h1 className="font-display text-3xl font-600">Packages</h1>
         <p className="text-sm text-ink/50">Pick a plan and pay securely by card.</p>
       </div>
+
+      {searchParams.error && errorMessages[searchParams.error] ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {errorMessages[searchParams.error]}
+        </div>
+      ) : null}
 
       {searchParams.zelleRequested ? (
         <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
