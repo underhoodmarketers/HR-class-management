@@ -79,11 +79,17 @@ export default async function CalendarPage({
     }),
     db.query.users.findMany({
       where: eq(users.role, "instructor"),
+      with: { instructorLocations: { with: { location: true } } },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
   ]);
 
   const instructorNameById = new Map(instructors.map((i) => [i.id, i.name]));
+  const instructorOptions = instructors.map((i) => ({
+    id: i.id,
+    name: i.name,
+    studioNames: i.instructorLocations.map((il) => il.location.name).join(", "),
+  }));
 
   const canSchedule = types.length > 0 && studios.length > 0;
 
@@ -230,11 +236,24 @@ export default async function CalendarPage({
               </div>
               <div>
                 <label className="label">Instructor (optional)</label>
-                <input
-                  name="instructor"
-                  className="input"
-                  placeholder="e.g. Pre"
-                />
+                <select name="instructorId" className="input" defaultValue="">
+                  <option value="">No specific instructor</option>
+                  {instructorOptions.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                      {i.studioNames ? ` (${i.studioNames})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {instructorOptions.length === 0 ? (
+                  <p className="mt-1 text-xs text-ink/40">
+                    No instructor accounts yet — add one on the{" "}
+                    <a href="/admin/instructors" className="text-magenta">
+                      Instructors
+                    </a>{" "}
+                    page.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="label">Repeat weekly until (optional)</label>
@@ -402,6 +421,7 @@ export default async function CalendarPage({
                           endsAt: s.endsAt,
                           capacity: s.capacity,
                           instructor: s.instructor,
+                          assignedInstructorId: s.assignedInstructorId,
                           canceled: s.canceled,
                           seriesId: s.seriesId,
                           locationId: s.locationId,
@@ -412,6 +432,7 @@ export default async function CalendarPage({
                           id: l.id,
                           name: l.name,
                         }))}
+                        instructors={instructorOptions}
                         assignedInstructorName={
                           s.assignedInstructorId
                             ? instructorNameById.get(s.assignedInstructorId) ?? null

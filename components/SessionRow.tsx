@@ -16,18 +16,21 @@ type Session = {
   endsAt: Date;
   capacity: number;
   instructor: string | null;
+  assignedInstructorId: number | null;
   canceled: boolean;
   seriesId: string | null;
   locationId: number;
 };
 
 type RosterEntry = { bookingId: number; userId: number; name: string; contact: string };
+type InstructorOption = { id: number; name: string; studioNames: string };
 
 export default function SessionRow({
   session,
   className,
   locationName,
   locations,
+  instructors,
   assignedInstructorName,
   booked,
   dayLabel,
@@ -41,6 +44,7 @@ export default function SessionRow({
   className: string;
   locationName: string;
   locations: { id: number; name: string }[];
+  instructors: InstructorOption[];
   assignedInstructorName: string | null;
   booked: number;
   dayLabel: string;
@@ -176,12 +180,19 @@ export default function SessionRow({
 
           <div>
             <label className="label">Instructor</label>
-            <input
-              name="instructor"
+            <select
+              name="instructorId"
               className="input"
-              defaultValue={session.instructor ?? ""}
-              placeholder="e.g. Pre"
-            />
+              defaultValue={session.assignedInstructorId ?? ""}
+            >
+              <option value="">No specific instructor</option>
+              {instructors.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                  {i.studioNames ? ` (${i.studioNames})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
 
           {editing === "series" ? (
