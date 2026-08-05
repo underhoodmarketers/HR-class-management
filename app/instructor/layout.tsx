@@ -5,8 +5,11 @@ import { logoutAction } from "@/app/actions/auth";
 export const dynamic = "force-dynamic";
 
 const nav = [
-  { href: "/instructor", label: "Customers" },
+  { href: "/instructor", label: "Dashboard" },
+  { href: "/instructor/customers", label: "Customers" },
   { href: "/instructor/schedule", label: "Schedule" },
+  { href: "/instructor/leaderboard", label: "Leaderboard" },
+  { href: "/instructor/profile", label: "Profile" },
 ];
 
 export default async function InstructorLayout({

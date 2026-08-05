@@ -12,8 +12,10 @@ const nav = [
   { href: "/admin/packages", label: "Packages" },
   { href: "/admin/promo-codes", label: "Promo codes" },
   { href: "/admin/zelle", label: "Zelle payments" },
+  { href: "/admin/leaderboard", label: "Leaderboard" },
   { href: "/admin/locations", label: "Studios & classes" },
   { href: "/admin/waiver", label: "Waiver" },
+  { href: "/admin/profile", label: "Profile" },
 ];
 
 export default async function AdminLayout({

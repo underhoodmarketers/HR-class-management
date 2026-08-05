@@ -1,12 +1,15 @@
-import { eq } from "drizzle-orm";
+import Link from "next/link";
+import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
-import { instructorLocations, users } from "@/db/schema";
+import { classSessions, instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
-import { formatDay, formatBirthday } from "@/lib/utils";
+import { formatDay, formatTime, formatBirthday, daysUntilBirthday } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function InstructorCustomersPage() {
+const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+
+export default async function InstructorDashboardPage() {
   const session = await requireInstructor();
   const now = new Date();
 
@@ -14,16 +17,36 @@ export default async function InstructorCustomersPage() {
     where: eq(instructorLocations.userId, session.userId),
     with: { location: true },
   });
-  const myLocationIds = new Set(myLocations.map((l) => l.locationId));
+  const myLocationIds = myLocations.map((l) => l.locationId);
+  const myLocationIdSet = new Set(myLocationIds);
   const myLocationNames = myLocations.map((l) => l.location.name).join(", ");
+  const hasLocations = myLocationIds.length > 0;
+  const locationFilter = hasLocations ? myLocationIds : [-1];
 
-  const customers = await db.query.users.findMany({
-    where: eq(users.role, "customer"),
-    with: {
-      memberships: { with: { package: { with: { locations: true } } } },
-    },
-    orderBy: (u, { asc }) => [asc(u.name)],
-  });
+  const visibleToMe = or(
+    isNull(classSessions.assignedInstructorId),
+    eq(classSessions.assignedInstructorId, session.userId)
+  );
+
+  const [customers, upNext] = await Promise.all([
+    db.query.users.findMany({
+      where: eq(users.role, "customer"),
+      with: {
+        memberships: { with: { package: { with: { locations: true } } } },
+      },
+      orderBy: (u, { asc }) => [asc(u.name)],
+    }),
+    db.query.classSessions.findFirst({
+      where: and(
+        inArray(classSessions.locationId, locationFilter),
+        visibleToMe,
+        gt(classSessions.startsAt, now),
+        eq(classSessions.canceled, false)
+      ),
+      with: { classType: true, location: true, bookings: { with: { user: true } } },
+      orderBy: [classSessions.startsAt],
+    }),
+  ]);
 
   // A customer is "yours" if any membership's package includes one of your
   // studios, or the package has no studio restriction (valid everywhere).
@@ -32,81 +55,139 @@ export default async function InstructorCustomersPage() {
       const pkgLocations = m.package.locations;
       return (
         pkgLocations.length === 0 ||
-        pkgLocations.some((pl) => myLocationIds.has(pl.locationId))
+        pkgLocations.some((pl) => myLocationIdSet.has(pl.locationId))
       );
     })
   );
 
+  const birthdaysThisWeek = scoped
+    .filter((c) => c.dob && daysUntilBirthday(c.dob) <= 6)
+    .sort((a, b) => daysUntilBirthday(a.dob!) - daysUntilBirthday(b.dob!));
+
+  const expiringMemberships = scoped
+    .flatMap((c) =>
+      c.memberships
+        .filter(
+          (m) =>
+            m.status === "active" &&
+            m.endsAt.getTime() > now.getTime() &&
+            m.endsAt.getTime() <= now.getTime() + TWO_WEEKS_MS
+        )
+        .map((m) => ({ customer: c, membership: m }))
+    )
+    .sort((a, b) => a.membership.endsAt.getTime() - b.membership.endsAt.getTime());
+
+  const upNextBooked = upNext
+    ? upNext.bookings.filter((b) => b.status === "booked").length
+    : 0;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="font-display text-3xl font-600">Customers</h1>
-        <p className="text-sm text-ink/50">
-          {myLocationNames ? `${myLocationNames} · ` : ""}
-          {scoped.length} customer{scoped.length === 1 ? "" : "s"}
-        </p>
+        <h1 className="font-display text-3xl font-600">Dashboard</h1>
+        <p className="text-sm text-ink/50">{myLocationNames || "No studio assigned yet"}</p>
       </div>
 
-      {myLocations.length === 0 ? (
+      {!hasLocations ? (
         <div className="card p-6 text-sm text-ink/50">
           You&apos;re not assigned to a studio yet. Ask an admin to assign one.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-blush/50 text-left text-xs uppercase tracking-wide text-ink/50">
-              <tr>
-                <th className="px-5 py-3 font-semibold">Name</th>
-                <th className="px-5 py-3 font-semibold">Contact</th>
-                <th className="px-5 py-3 font-semibold">Membership</th>
-                <th className="px-5 py-3 font-semibold">Expires</th>
-                <th className="px-5 py-3 font-semibold">Birthday</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink/5">
-              {scoped.map((c) => {
-                const activeMemberships = c.memberships.filter(
-                  (m) => m.status === "active" && m.endsAt > now
-                );
-                return (
-                  <tr key={c.id}>
-                    <td className="px-5 py-3 font-medium">{c.name}</td>
-                    <td className="px-5 py-3 text-ink/60">
-                      <div>{c.email}</div>
-                      <div className="text-xs text-ink/40">{c.phone || "—"}</div>
-                    </td>
-                    <td className="px-5 py-3 text-ink/60">
-                      {activeMemberships.length > 0 ? (
-                        activeMemberships.map((m) => (
-                          <div key={m.id}>{m.package.name}</div>
-                        ))
-                      ) : (
-                        <span className="text-ink/40">None</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-ink/60">
-                      {activeMemberships.length > 0 ? (
-                        activeMemberships.map((m) => (
-                          <div key={m.id}>{formatDay(m.endsAt)}</div>
-                        ))
-                      ) : (
-                        <span className="text-ink/40">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-ink/60">{formatBirthday(c.dob)}</td>
-                  </tr>
-                );
-              })}
-              {scoped.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-ink/40">
-                    No customers at your studio yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="card p-5">
+              <p className="text-sm text-ink/50">Customers at your studio</p>
+              <p className="mt-1 font-display text-3xl font-600 text-magenta">{scoped.length}</p>
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-ink/50">Booked for your next class</p>
+              <p className="mt-1 font-display text-3xl font-600 text-magenta">
+                {upNext ? `${upNextBooked}/${upNext.capacity}` : "—"}
+              </p>
+              {upNext ? (
+                <p className="mt-1 text-xs text-ink/40">
+                  {upNext.classType.name} · {upNext.location.name} · {formatDay(upNext.startsAt)}{" "}
+                  {formatTime(upNext.startsAt)}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-ink/40">Nothing upcoming.</p>
+              )}
+            </div>
+            <div className="card p-5">
+              <p className="text-sm text-ink/50">Memberships expiring within 2 weeks</p>
+              <p className="mt-1 font-display text-3xl font-600 text-magenta">
+                {expiringMemberships.length}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="card p-6">
+              <h2 className="mb-4 font-600">Birthdays this week</h2>
+              {birthdaysThisWeek.length === 0 ? (
+                <p className="text-sm text-ink/40">No birthdays this week.</p>
+              ) : (
+                <ul className="divide-y divide-ink/5 text-sm">
+                  {birthdaysThisWeek.map((c) => (
+                    <li key={c.id} className="flex items-center justify-between py-2">
+                      <span>{c.name}</span>
+                      <span className="text-xs text-ink/50">
+                        {daysUntilBirthday(c.dob!) === 0 ? "Today 🎉" : formatBirthday(c.dob)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="card p-6">
+              <h2 className="mb-4 font-600">Membership expiring soon</h2>
+              {expiringMemberships.length === 0 ? (
+                <p className="text-sm text-ink/40">Nothing expiring in the next 2 weeks.</p>
+              ) : (
+                <ul className="divide-y divide-ink/5 text-sm">
+                  {expiringMemberships.map(({ customer, membership }) => (
+                    <li key={membership.id} className="flex items-center justify-between py-2">
+                      <div>
+                        <p>{customer.name}</p>
+                        <p className="text-xs text-ink/40">{membership.package.name}</p>
+                      </div>
+                      <span className="text-xs text-ink/50">
+                        Last day {formatDay(membership.endsAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-600">Up next</h2>
+              <Link href="/instructor/schedule" className="text-sm font-semibold text-magenta">
+                Full schedule →
+              </Link>
+            </div>
+            {upNext ? (
+              <ul className="divide-y divide-ink/5 text-sm">
+                {upNext.bookings
+                  .filter((b) => b.status === "booked")
+                  .map((b) => (
+                    <li key={b.id} className="flex items-center justify-between py-2">
+                      <span>{b.user.name}</span>
+                      <span className="text-xs text-ink/40">{b.user.phone || b.user.email}</span>
+                    </li>
+                  ))}
+                {upNext.bookings.filter((b) => b.status === "booked").length === 0 ? (
+                  <li className="py-2 text-ink/40">Nobody booked yet.</li>
+                ) : null}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink/40">Nothing upcoming.</p>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

@@ -205,6 +205,19 @@ export function formatBirthday(dob: string | null) {
   });
 }
 
+/** Days (studio time) until dob's next month/day occurrence, 0 if today. */
+export function daysUntilBirthday(dob: string): number {
+  const [, m, d] = dob.split("-").map(Number);
+  const todayKey = studioDateKey(new Date());
+  const [ty] = todayKey.split("-").map(Number);
+  const toUtcMidnight = (y: number, mo: number, day: number) => Date.UTC(y, mo - 1, day);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const todayUtc = toUtcMidnight(...(todayKey.split("-").map(Number) as [number, number, number]));
+  let next = toUtcMidnight(ty, m, d);
+  if (next < todayUtc) next = toUtcMidnight(ty + 1, m, d);
+  return Math.round((next - todayUtc) / dayMs);
+}
+
 export function formatDob(dob: string | null) {
   if (!dob) return "—";
   // dob is stored as a plain "yyyy-mm-dd" date with no timezone.

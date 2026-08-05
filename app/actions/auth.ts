@@ -1,16 +1,19 @@
 "use server";
 
+import crypto from "crypto";
 import { redirect } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { users, waiverTemplate, waiverSignatures } from "@/db/schema";
+import { users, waiverTemplate, waiverSignatures, passwordResetTokens } from "@/db/schema";
 import {
   hashPassword,
   verifyPassword,
   createSession,
   destroySession,
+  getSession,
 } from "@/lib/auth";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 const signupSchema = z.object({
   name: z.string().min(2, "Enter your full name."),
@@ -131,4 +134,118 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 export async function logoutAction() {
   await destroySession();
   redirect("/login");
+}
+
+// ---------- Change password (logged-in user, any role) ----------
+
+export async function changePasswordAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const currentPassword = String(formData.get("currentPassword") || "");
+  const newPassword = String(formData.get("newPassword") || "");
+  const confirmPassword = String(formData.get("confirmPassword") || "");
+  const home =
+    session.role === "admin"
+      ? "/admin/profile"
+      : session.role === "instructor"
+      ? "/instructor/profile"
+      : "/portal/profile";
+  const redirectTo = safeNext(String(formData.get("redirectTo") || "")) ?? home;
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+  if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+    redirect(`${redirectTo}?pwerror=current`);
+  }
+  if (newPassword.length < 8) {
+    redirect(`${redirectTo}?pwerror=weak`);
+  }
+  if (newPassword !== confirmPassword) {
+    redirect(`${redirectTo}?pwerror=confirm`);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash }).where(eq(users.id, session.userId));
+
+  redirect(`${redirectTo}?pwupdated=1`);
+}
+
+// ---------- Forgot password (unauthenticated) ----------
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Enter a valid email."),
+});
+
+export async function requestPasswordResetAction(
+  _prev: unknown,
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const parsed = forgotPasswordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.email, parsed.data.email.toLowerCase()),
+  });
+
+  // Always report success, whether or not the email matches an account —
+  // don't let this form be used to test which emails have accounts.
+  if (user) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await db.insert(passwordResetTokens).values({ userId: user.id, token, expiresAt });
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    try {
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (err) {
+      console.error("Failed to send password reset email:", err);
+    }
+  }
+
+  return { success: true };
+}
+
+// ---------- Reset password (via emailed token) ----------
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+  confirmPassword: z.string(),
+});
+
+export async function resetPasswordAction(
+  _prev: unknown,
+  formData: FormData
+): Promise<{ error?: string }> {
+  const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+  const { token, password, confirmPassword } = parsed.data;
+  if (password !== confirmPassword) {
+    return { error: "Passwords don't match." };
+  }
+
+  const row = await db.query.passwordResetTokens.findFirst({
+    where: and(
+      eq(passwordResetTokens.token, token),
+      isNull(passwordResetTokens.usedAt),
+      gt(passwordResetTokens.expiresAt, new Date())
+    ),
+  });
+  if (!row) {
+    return { error: "This reset link is invalid or has expired. Request a new one." };
+  }
+
+  const passwordHash = await hashPassword(password);
+  await db.update(users).set({ passwordHash }).where(eq(users.id, row.userId));
+  await db
+    .update(passwordResetTokens)
+    .set({ usedAt: new Date() })
+    .where(eq(passwordResetTokens.id, row.id));
+
+  redirect("/login?reset=1");
 }

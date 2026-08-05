@@ -191,6 +191,18 @@ export const zellePayments = pgTable("zelle_payments", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 });
 
+// ---------- Password reset tokens (forgot-password email flow) ----------
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Waiver template + signatures ----------
 export const waiverTemplate = pgTable("waiver_template", {
   id: serial("id").primaryKey(),
@@ -287,6 +299,10 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
 
 export const waiverSignaturesRelations = relations(waiverSignatures, ({ one }) => ({
   user: one(users, { fields: [waiverSignatures.userId], references: [users.id] }),
+}));
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
 }));
 
 export type User = typeof users.$inferSelect;
