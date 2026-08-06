@@ -8,7 +8,6 @@ import { deleteCustomer } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import EditCustomerCard from "@/components/EditCustomerCard";
 import MembershipCard from "@/components/MembershipCard";
-import MakeupCreditsCard from "@/components/MakeupCreditsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +15,6 @@ const errorMessages: Record<string, string> = {
   invalid: "Fill in name, email, phone, date of birth, and preferred studio.",
   exists: "Another account already uses that email.",
   membership_invalid: "Fill in a package, valid dates, and non-negative credits.",
-  makeup_invalid: "Makeup credits must be a whole number, 0 or more.",
 };
 
 export default async function CustomerDetail({
@@ -30,7 +28,6 @@ export default async function CustomerDetail({
     error?: string;
     membership_updated?: string;
     membership_created?: string;
-    makeup_updated?: string;
   };
 }) {
   const id = Number(params.id);
@@ -84,8 +81,6 @@ export default async function CustomerDetail({
       ? { tone: "ok" as const, text: "Membership updated." }
       : searchParams.membership_created
       ? { tone: "ok" as const, text: "Membership added." }
-      : searchParams.makeup_updated
-      ? { tone: "ok" as const, text: "Makeup credits updated." }
       : null;
 
   return (
@@ -159,41 +154,39 @@ export default async function CustomerDetail({
                 }
               : null
           }
-          packages={allPackages.map((p) => ({ id: p.id, name: p.name, priceCents: p.priceCents }))}
+          packages={allPackages.map((p) => ({
+            id: p.id,
+            name: p.name,
+            priceCents: p.priceCents,
+            credits: p.credits,
+            durationDays: p.durationDays,
+          }))}
           attendedInPackage={attendedInPackage}
-        />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <MakeupCreditsCard
-          customerId={customer.id}
-          makeupCredits={customer.makeupCredits}
-          packageCreditsRemaining={currentMembership?.creditsRemaining ?? null}
           totalAttended={totalAttended}
         />
-
-        {customer.memberships.length > 1 ? (
-          <div className="card p-6 lg:col-span-2">
-            <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">
-              Membership history
-            </h2>
-            <ul className="divide-y divide-ink/5 text-sm">
-              {customer.memberships.slice(1).map((m) => (
-                <li key={m.id} className="flex items-center justify-between py-2">
-                  <span>
-                    {m.package.name}{" "}
-                    <span className="text-ink/40">({formatMoney(m.package.priceCents)})</span>
-                  </span>
-                  <span className="text-right text-ink/50">
-                    {formatDay(m.startsAt)} – {formatDay(m.endsAt)}
-                    <span className="badge ml-2 bg-blush text-magenta-deep">{m.status}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </div>
+
+      {customer.memberships.length > 1 ? (
+        <div className="card p-6">
+          <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">
+            Membership history
+          </h2>
+          <ul className="divide-y divide-ink/5 text-sm">
+            {customer.memberships.slice(1).map((m) => (
+              <li key={m.id} className="flex items-center justify-between py-2">
+                <span>
+                  {m.package.name}{" "}
+                  <span className="text-ink/40">({formatMoney(m.package.priceCents)})</span>
+                </span>
+                <span className="text-right text-ink/50">
+                  {formatDay(m.startsAt)} – {formatDay(m.endsAt)}
+                  <span className="badge ml-2 bg-blush text-magenta-deep">{m.status}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="card p-6">
         <h2 className="mb-4 font-600">Booking history</h2>

@@ -185,6 +185,45 @@ export function shiftMonthKey(monthKey: string, delta: number) {
   return `${ny}-${String(nm).padStart(2, "0")}`;
 }
 
+/**
+ * Parses a pasted date string in common formats (yyyy-mm-dd, mm/dd/yyyy,
+ * mm-dd-yyyy, or a human-readable string like "August 2, 2026") into the
+ * "yyyy-mm-dd" value a native `<input type="date">` needs. Native date
+ * inputs don't reliably accept pasted text, so callers use this to handle
+ * paste events themselves. Returns null if the text isn't a recognizable
+ * date.
+ */
+export function parseFlexibleDate(text: string): string | null {
+  const trimmed = text.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const mdy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const [, m, d, y] = mdy;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+/** Calendar-day arithmetic on a "yyyy-mm-dd" key — no timezone involved. */
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  const ny = date.getUTCFullYear();
+  const nm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const nd = String(date.getUTCDate()).padStart(2, "0");
+  return `${ny}-${nm}-${nd}`;
+}
+
 export function monthLabel(monthKey: string) {
   const [y, m] = monthKey.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {

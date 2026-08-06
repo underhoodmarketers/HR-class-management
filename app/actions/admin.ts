@@ -801,26 +801,6 @@ export async function createMembershipForCustomer(formData: FormData) {
   redirect(`/admin/customers/${customerId}?membership_created=1`);
 }
 
-export async function updateMakeupCredits(formData: FormData) {
-  await requireAdmin();
-  const customerId = Number(formData.get("customerId"));
-  if (!customerId) redirect("/admin/customers?error=invalid");
-
-  const raw = String(formData.get("makeupCredits") || "").trim();
-  const makeupCredits = Number(raw);
-  if (raw === "" || isNaN(makeupCredits) || makeupCredits < 0 || !Number.isInteger(makeupCredits)) {
-    redirect(`/admin/customers/${customerId}?error=makeup_invalid`);
-  }
-
-  await db
-    .update(users)
-    .set({ makeupCredits })
-    .where(and(eq(users.id, customerId), eq(users.role, "customer")));
-
-  revalidatePath(`/admin/customers/${customerId}`);
-  redirect(`/admin/customers/${customerId}?makeup_updated=1`);
-}
-
 export async function deleteCustomer(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));
