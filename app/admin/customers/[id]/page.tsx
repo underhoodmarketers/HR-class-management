@@ -29,6 +29,7 @@ export default async function CustomerDetail({
     updated?: string;
     error?: string;
     membership_updated?: string;
+    membership_created?: string;
     makeup_updated?: string;
   };
 }) {
@@ -81,6 +82,8 @@ export default async function CustomerDetail({
       ? { tone: "ok" as const, text: "Customer updated." }
       : searchParams.membership_updated
       ? { tone: "ok" as const, text: "Membership updated." }
+      : searchParams.membership_created
+      ? { tone: "ok" as const, text: "Membership added." }
       : searchParams.makeup_updated
       ? { tone: "ok" as const, text: "Makeup credits updated." }
       : null;

@@ -748,6 +748,59 @@ export async function updateMembership(formData: FormData) {
   redirect(`/admin/customers/${customerId}?membership_updated=1`);
 }
 
+/**
+ * Manually grants a customer a membership — e.g. comping a package, or
+ * entering a customer's existing package from before they were on this
+ * system. Rolls over any leftover credits from their prior membership(s)
+ * first, same as a real purchase would.
+ */
+export async function createMembershipForCustomer(formData: FormData) {
+  await requireAdmin();
+  const customerId = Number(formData.get("customerId"));
+  if (!customerId) redirect("/admin/customers?error=invalid");
+
+  const packageId = Number(formData.get("packageId"));
+  const status = String(formData.get("status") || "active");
+  const creditsRaw = String(formData.get("creditsRemaining") || "").trim();
+  const creditsRemaining = creditsRaw === "" ? null : Number(creditsRaw);
+  const startsAtValue = String(formData.get("startsAt") || "");
+  const endsAtValue = String(formData.get("endsAt") || "");
+  const billingType = String(formData.get("billingType") || "manual");
+
+  const startsAt = fromStudioTime(`${startsAtValue}T00:00`);
+  const endsAt = fromStudioTime(`${endsAtValue}T23:59`);
+
+  const invalid =
+    !packageId ||
+    !["active", "expired", "pending"].includes(status) ||
+    isNaN(startsAt.getTime()) ||
+    isNaN(endsAt.getTime()) ||
+    endsAt.getTime() < startsAt.getTime() ||
+    (creditsRaw !== "" && (isNaN(creditsRemaining as number) || (creditsRemaining as number) < 0));
+  if (invalid) {
+    redirect(`/admin/customers/${customerId}?error=membership_invalid`);
+  }
+
+  const customer = await db.query.users.findFirst({
+    where: and(eq(users.id, customerId), eq(users.role, "customer")),
+  });
+  if (!customer) redirect("/admin/customers?error=invalid");
+
+  await rolloverUnusedCredits(customerId);
+  await db.insert(memberships).values({
+    userId: customerId,
+    packageId,
+    status,
+    creditsRemaining,
+    startsAt,
+    endsAt,
+    billingType,
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?membership_created=1`);
+}
+
 export async function updateMakeupCredits(formData: FormData) {
   await requireAdmin();
   const customerId = Number(formData.get("customerId"));
