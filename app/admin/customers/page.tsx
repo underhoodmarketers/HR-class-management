@@ -182,7 +182,12 @@ export default async function CustomersPage({
                 <td className="px-5 py-3 text-ink/60">{c.location?.name || "—"}</td>
                 <td className="px-5 py-3">
                   {c.active ? (
-                    <span className="badge bg-magenta/10 text-magenta-deep">{c.active.package.name}</span>
+                    <>
+                      <span className="badge bg-magenta/10 text-magenta-deep">{c.active.package.name}</span>
+                      <div className="mt-1 text-xs text-ink/40">
+                        {formatDay(c.active.startsAt)} – {formatDay(c.active.endsAt)}
+                      </div>
+                    </>
                   ) : (
                     <span className="text-ink/40">None</span>
                   )}
