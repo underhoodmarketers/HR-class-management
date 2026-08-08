@@ -9,14 +9,15 @@ import { formatDay } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type SortField = "name" | "contact" | "studio" | "membership" | "joined";
+type SortField = "name" | "contact" | "studio" | "membership" | "start" | "end";
 
 const SORT_LABELS: Record<SortField, string> = {
   name: "Name",
   contact: "Contact",
   studio: "Studio",
   membership: "Membership",
-  joined: "Joined",
+  start: "Start date",
+  end: "End date",
 };
 
 function SortHeader({
@@ -68,7 +69,10 @@ export default async function CustomersPage({
     db.query.users.findMany({
       where: eq(users.role, "customer"),
       with: {
-        memberships: { with: { package: true } },
+        memberships: {
+          with: { package: true },
+          orderBy: (m, { desc }) => [desc(m.createdAt)],
+        },
         signatures: true,
         location: true,
       },
@@ -84,18 +88,22 @@ export default async function CustomersPage({
   const membershipFilter = searchParams.membership ?? "";
   const waiverFilter = searchParams.waiver ?? "";
   const sort: SortField = (
-    ["name", "contact", "studio", "membership", "joined"].includes(searchParams.sort ?? "")
+    ["name", "contact", "studio", "membership", "start", "end"].includes(searchParams.sort ?? "")
       ? searchParams.sort
-      : "joined"
+      : "name"
   ) as SortField;
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
 
-  const withActive = customers.map((c) => ({
-    ...c,
-    active: c.memberships.find((m) => m.status === "active" && m.endsAt > now) ?? null,
-  }));
+  // The most recent membership regardless of status, so a pending or
+  // expired one still shows its dates — "active" tracks whether it's
+  // actually in effect right now, for the badge and the filter.
+  const withCurrent = customers.map((c) => {
+    const current = c.memberships[0] ?? null;
+    const isActive = current?.status === "active" && current.endsAt > now;
+    return { ...c, current, isActive };
+  });
 
-  let filtered = withActive.filter((c) => {
+  let filtered = withCurrent.filter((c) => {
     if (q) {
       const haystack = `${c.name} ${c.email} ${c.phone ?? ""}`.toLowerCase();
       if (!haystack.includes(q)) return false;
@@ -104,19 +112,20 @@ export default async function CustomersPage({
     if (studioFilter && studioFilter !== "none" && c.locationId !== Number(studioFilter)) {
       return false;
     }
-    if (membershipFilter === "active" && !c.active) return false;
-    if (membershipFilter === "none" && c.active) return false;
+    if (membershipFilter === "active" && !c.isActive) return false;
+    if (membershipFilter === "none" && c.isActive) return false;
     if (waiverFilter === "signed" && c.signatures.length === 0) return false;
     if (waiverFilter === "missing" && c.signatures.length > 0) return false;
     return true;
   });
 
-  const cmp: Record<SortField, (a: (typeof withActive)[number], b: (typeof withActive)[number]) => number> = {
+  const cmp: Record<SortField, (a: (typeof withCurrent)[number], b: (typeof withCurrent)[number]) => number> = {
     name: (a, b) => a.name.localeCompare(b.name),
     contact: (a, b) => a.email.localeCompare(b.email),
     studio: (a, b) => (a.location?.name ?? "").localeCompare(b.location?.name ?? ""),
-    membership: (a, b) => (a.active?.package.name ?? "").localeCompare(b.active?.package.name ?? ""),
-    joined: (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    membership: (a, b) => (a.current?.package.name ?? "").localeCompare(b.current?.package.name ?? ""),
+    start: (a, b) => (a.current?.startsAt.getTime() ?? 0) - (b.current?.startsAt.getTime() ?? 0),
+    end: (a, b) => (a.current?.endsAt.getTime() ?? 0) - (b.current?.endsAt.getTime() ?? 0),
   };
   filtered = [...filtered].sort((a, b) => (dir === "asc" ? cmp[sort](a, b) : -cmp[sort](a, b)));
 
@@ -144,7 +153,7 @@ export default async function CustomersPage({
 
       <CustomersFilterBar studios={studios.map((s) => ({ id: s.id, name: s.name }))} />
 
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-blush/50 text-left text-xs uppercase tracking-wide text-ink/50">
             <tr>
@@ -160,10 +169,13 @@ export default async function CustomersPage({
               <th className="px-5 py-3 font-semibold">
                 <SortHeader field="membership" activeSort={sort} activeDir={dir} searchParams={searchParams} />
               </th>
-              <th className="px-5 py-3 font-semibold">Waiver</th>
               <th className="px-5 py-3 font-semibold">
-                <SortHeader field="joined" activeSort={sort} activeDir={dir} searchParams={searchParams} />
+                <SortHeader field="start" activeSort={sort} activeDir={dir} searchParams={searchParams} />
               </th>
+              <th className="px-5 py-3 font-semibold">
+                <SortHeader field="end" activeSort={sort} activeDir={dir} searchParams={searchParams} />
+              </th>
+              <th className="px-5 py-3 font-semibold">Waiver</th>
               <th className="px-5 py-3 font-semibold"></th>
             </tr>
           </thead>
@@ -181,16 +193,22 @@ export default async function CustomersPage({
                 </td>
                 <td className="px-5 py-3 text-ink/60">{c.location?.name || "—"}</td>
                 <td className="px-5 py-3">
-                  {c.active ? (
+                  {c.current ? (
                     <>
-                      <span className="badge bg-magenta/10 text-magenta-deep">{c.active.package.name}</span>
-                      <div className="mt-1 text-xs text-ink/40">
-                        {formatDay(c.active.startsAt)} – {formatDay(c.active.endsAt)}
-                      </div>
+                      <span className="badge bg-magenta/10 text-magenta-deep">{c.current.package.name}</span>
+                      {!c.isActive ? (
+                        <span className="ml-1.5 text-xs text-ink/40">({c.current.status})</span>
+                      ) : null}
                     </>
                   ) : (
                     <span className="text-ink/40">None</span>
                   )}
+                </td>
+                <td className="px-5 py-3 text-ink/60">
+                  {c.current ? formatDay(c.current.startsAt) : "—"}
+                </td>
+                <td className="px-5 py-3 text-ink/60">
+                  {c.current ? formatDay(c.current.endsAt) : "—"}
                 </td>
                 <td className="px-5 py-3">
                   {c.signatures.length ? (
@@ -199,7 +217,6 @@ export default async function CustomersPage({
                     <span className="badge bg-amber-100 text-amber-700">Missing</span>
                   )}
                 </td>
-                <td className="px-5 py-3 text-ink/50">{formatDay(c.createdAt)}</td>
                 <td className="px-5 py-3 text-right">
                   <ConfirmDeleteButton
                     id={c.id}
@@ -212,7 +229,7 @@ export default async function CustomersPage({
             ))}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-ink/40">
+                <td colSpan={8} className="px-5 py-8 text-center text-ink/40">
                   {customers.length === 0 ? "No customers yet." : "No customers match these filters."}
                 </td>
               </tr>
