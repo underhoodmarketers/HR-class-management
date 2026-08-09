@@ -8,6 +8,7 @@ import { deleteCustomer } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import EditCustomerCard from "@/components/EditCustomerCard";
 import MembershipCard from "@/components/MembershipCard";
+import NotesCard from "@/components/NotesCard";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function CustomerDetail({
     error?: string;
     membership_updated?: string;
     membership_created?: string;
+    notes_updated?: string;
   };
 }) {
   const id = Number(params.id);
@@ -81,6 +83,8 @@ export default async function CustomerDetail({
       ? { tone: "ok" as const, text: "Membership updated." }
       : searchParams.membership_created
       ? { tone: "ok" as const, text: "Membership added." }
+      : searchParams.notes_updated
+      ? { tone: "ok" as const, text: "Notes updated." }
       : null;
 
   return (
@@ -165,6 +169,8 @@ export default async function CustomerDetail({
           totalAttended={totalAttended}
         />
       </div>
+
+      <NotesCard customerId={customer.id} notes={customer.notes} />
 
       {customer.memberships.length > 1 ? (
         <div className="card p-6">

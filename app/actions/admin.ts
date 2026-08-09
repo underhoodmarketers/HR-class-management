@@ -711,6 +711,21 @@ export async function updateCustomer(formData: FormData) {
   redirect(`/admin/customers/${id}?updated=1`);
 }
 
+export async function updateCustomerNotes(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) redirect("/admin/customers?error=invalid");
+  const notes = String(formData.get("notes") || "").trim() || null;
+
+  await db
+    .update(users)
+    .set({ notes })
+    .where(and(eq(users.id, id), eq(users.role, "customer")));
+
+  revalidatePath(`/admin/customers/${id}`);
+  redirect(`/admin/customers/${id}?notes_updated=1`);
+}
+
 export async function updateMembership(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));
