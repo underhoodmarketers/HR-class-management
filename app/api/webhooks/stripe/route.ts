@@ -48,8 +48,10 @@ export async function POST(req: NextRequest) {
         });
         if (pkg) {
           const startsAt = new Date();
+          // durationDays counts the start day itself as day 1 (e.g. a
+          // 28-day/"1 month" package starting 8/8 ends 9/4, not 9/5).
           const endsAt = new Date(
-            startsAt.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000
+            startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
           );
           await rolloverUnusedCredits(userId);
           await db.insert(memberships).values({
@@ -94,8 +96,9 @@ export async function POST(req: NextRequest) {
           });
           if (pkg) {
             const startsAt = new Date();
+            // durationDays counts the start day itself as day 1.
             const endsAt = new Date(
-              startsAt.getTime() + pkg.durationDays * 24 * 60 * 60 * 1000
+              startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
             );
             await rolloverUnusedCredits(userId);
             await db.insert(memberships).values({

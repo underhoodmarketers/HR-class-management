@@ -898,8 +898,9 @@ export async function approveZellePayment(formData: FormData) {
   if (!request || request.status !== "pending") return;
 
   const startsAt = new Date();
+  // durationDays counts the start day itself as day 1.
   const endsAt = new Date(
-    startsAt.getTime() + request.package.durationDays * 24 * 60 * 60 * 1000
+    startsAt.getTime() + (request.package.durationDays - 1) * 24 * 60 * 60 * 1000
   );
   await rolloverUnusedCredits(request.userId);
   const [membership] = await db

@@ -265,9 +265,11 @@ function CreateMembershipForm({
   packages: PackageOption[];
   todayKey: string;
 }) {
+  // The start day itself counts as day 1 of the package, so a 28-day
+  // ("1 month") package starting 8/8 ends 9/4, not 9/5.
   const [packageId, setPackageId] = useState(packages[0].id);
   const [startsAt, setStartsAt] = useState(todayKey);
-  const [endsAt, setEndsAt] = useState(addDaysToDateKey(todayKey, packages[0].durationDays));
+  const [endsAt, setEndsAt] = useState(addDaysToDateKey(todayKey, packages[0].durationDays - 1));
   const [creditsRemaining, setCreditsRemaining] = useState<string>(
     packages[0].credits === null ? "" : String(packages[0].credits)
   );
@@ -276,7 +278,7 @@ function CreateMembershipForm({
     setPackageId(id);
     const pkg = packages.find((p) => p.id === id);
     if (!pkg) return;
-    setEndsAt(addDaysToDateKey(startsAt, pkg.durationDays));
+    setEndsAt(addDaysToDateKey(startsAt, pkg.durationDays - 1));
     setCreditsRemaining(pkg.credits === null ? "" : String(pkg.credits));
   }
 
@@ -284,7 +286,7 @@ function CreateMembershipForm({
     setStartsAt(value);
     const pkg = packages.find((p) => p.id === packageId);
     if (pkg && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      setEndsAt(addDaysToDateKey(value, pkg.durationDays));
+      setEndsAt(addDaysToDateKey(value, pkg.durationDays - 1));
     }
   }
 
