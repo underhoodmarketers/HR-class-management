@@ -32,6 +32,7 @@ import {
 } from "@/lib/utils";
 import { randomUUID } from "crypto";
 import { stripe, stripeConfigured } from "@/lib/stripe";
+import { sendPackagePurchaseEmail } from "@/lib/email";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -1024,7 +1025,7 @@ export async function approveZellePayment(formData: FormData) {
 
   const request = await db.query.zellePayments.findFirst({
     where: eq(zellePayments.id, id),
-    with: { package: true },
+    with: { package: true, user: true },
   });
   if (!request || request.status !== "pending") return;
 
@@ -1051,6 +1052,15 @@ export async function approveZellePayment(formData: FormData) {
     .update(zellePayments)
     .set({ status: "approved", membershipId: membership.id, reviewedAt: new Date() })
     .where(eq(zellePayments.id, id));
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  await sendPackagePurchaseEmail(request.user.email, {
+    name: request.user.name,
+    packageName: request.package.name,
+    credits: request.package.credits,
+    priceCents: request.package.priceCents,
+    portalUrl: `${baseUrl}/portal`,
+  });
 
   revalidatePath("/admin/zelle");
   revalidatePath("/portal/packages");

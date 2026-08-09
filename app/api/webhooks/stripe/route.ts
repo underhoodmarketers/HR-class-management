@@ -2,11 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "@/db";
-import { memberships, packages } from "@/db/schema";
+import { memberships, packages, users } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
 import { rolloverUnusedCredits } from "@/lib/queries";
+import { sendPackagePurchaseEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
+
+async function notifyPurchase(userId: number, pkg: { name: string; credits: number | null; priceCents: number }) {
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) return;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+  await sendPackagePurchaseEmail(user.email, {
+    name: user.name,
+    packageName: pkg.name,
+    credits: pkg.credits,
+    priceCents: pkg.priceCents,
+    portalUrl: `${baseUrl}/portal`,
+  });
+}
 
 export async function POST(req: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -66,6 +80,7 @@ export async function POST(req: NextRequest) {
               typeof checkout.subscription === "string" ? checkout.subscription : null,
             billingType,
           });
+          await notifyPurchase(userId, pkg);
         }
       }
     }
@@ -112,6 +127,7 @@ export async function POST(req: NextRequest) {
               stripeSubscriptionId: subscriptionId,
               billingType: "recurring",
             });
+            await notifyPurchase(userId, pkg);
           }
         }
       }

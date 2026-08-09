@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, classSessions, memberships, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
@@ -37,6 +37,18 @@ export async function bookClass(formData: FormData) {
   const bookedCount = classSession.bookings.filter((b) => b.status === "booked").length;
   if (bookedCount >= classSession.capacity) return;
 
+  // Purchased packages (not admin-added ones, which set dates deliberately)
+  // don't start their clock until the customer's first booked class, so
+  // nobody loses days sitting on an unbooked package.
+  let isFirstBookingEver = false;
+  if (["one_time", "recurring", "zelle"].includes(membership.billingType)) {
+    const [{ count: priorBookings }] = await db
+      .select({ count: count() })
+      .from(bookings)
+      .where(eq(bookings.membershipId, membership.id));
+    isFirstBookingEver = priorBookings === 0;
+  }
+
   // Credit check (null credits = unlimited). Once this package's own
   // per-cycle credits are used up, borrow from the never-expiring makeup
   // credit pool before blocking the booking.
@@ -68,6 +80,15 @@ export async function bookClass(formData: FormData) {
       .update(memberships)
       .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
       .where(eq(memberships.id, membership.id));
+  }
+
+  if (isFirstBookingEver) {
+    const startsAt = new Date();
+    // durationDays counts the start day itself as day 1.
+    const endsAt = new Date(
+      startsAt.getTime() + (membership.package.durationDays - 1) * 24 * 60 * 60 * 1000
+    );
+    await db.update(memberships).set({ startsAt, endsAt }).where(eq(memberships.id, membership.id));
   }
 
   revalidatePath("/portal/schedule");
