@@ -9,6 +9,7 @@ import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import EditCustomerCard from "@/components/EditCustomerCard";
 import MembershipCard from "@/components/MembershipCard";
 import NotesCard from "@/components/NotesCard";
+import TrialCreditCard from "@/components/TrialCreditCard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,9 @@ const errorMessages: Record<string, string> = {
   invalid: "Fill in name, email, phone, date of birth, and preferred studio.",
   exists: "Another account already uses that email.",
   membership_invalid: "Fill in a package, valid dates, and non-negative credits.",
+  stripe_not_configured: "Payments aren't set up, so a promo code can't be created.",
+  trial_window_expired: "Their trial class was more than 24 hours ago — the conversion window has passed.",
+  trial_code_failed: "Couldn't create the promo code in Stripe. Try again.",
 };
 
 export default async function CustomerDetail({
@@ -32,6 +36,8 @@ export default async function CustomerDetail({
     membership_frozen?: string;
     membership_unfrozen?: string;
     notes_updated?: string;
+    trial_code?: string;
+    from?: string;
   };
 }) {
   const id = Number(params.id);
@@ -74,6 +80,21 @@ export default async function CustomerDetail({
     : 0;
   const totalAttended = allBookings.filter(attended).length;
 
+  // Most recent Drop-In (trial) membership, if any, and its class booking —
+  // drives the "give a $20 trial credit code" prompt below.
+  const trialMembership = customer.memberships.find((m) => m.package.name === "Drop-In (1 Class)") ?? null;
+  const trialBooking = trialMembership
+    ? allBookings.find((b) => b.membershipId === trialMembership.id && b.status === "booked")
+    : null;
+  const trialClassAt = trialBooking?.session.startsAt ?? null;
+  const hoursSinceTrialClass = trialClassAt ? (now.getTime() - trialClassAt.getTime()) / (60 * 60 * 1000) : null;
+  const trialCreditEligible =
+    trialMembership !== null &&
+    !trialMembership.trialCreditCode &&
+    hoursSinceTrialClass !== null &&
+    hoursSinceTrialClass >= 0 &&
+    hoursSinceTrialClass <= 24;
+
   const banner =
     searchParams.error && errorMessages[searchParams.error]
       ? { tone: "error" as const, text: errorMessages[searchParams.error] }
@@ -96,13 +117,20 @@ export default async function CustomerDetail({
         }
       : searchParams.notes_updated
       ? { tone: "ok" as const, text: "Notes updated." }
+      : searchParams.trial_code
+      ? { tone: "ok" as const, text: `Trial credit code created: ${searchParams.trial_code}` }
       : null;
 
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link href="/admin/customers" className="text-sm text-magenta">← All customers</Link>
+          <Link
+            href={searchParams.from ? `/admin/customers?${searchParams.from}` : "/admin/customers"}
+            className="text-sm text-magenta"
+          >
+            ← All customers
+          </Link>
           <h1 className="mt-2 font-display text-3xl font-600">{customer.name}</h1>
           <p className="text-sm text-ink/50">Joined {formatDay(customer.createdAt)}</p>
         </div>
@@ -184,6 +212,15 @@ export default async function CustomerDetail({
       </div>
 
       <NotesCard customerId={customer.id} notes={customer.notes} />
+
+      {trialMembership && (trialMembership.trialCreditCode || trialCreditEligible) ? (
+        <TrialCreditCard
+          customerId={customer.id}
+          membershipId={trialMembership.id}
+          code={trialMembership.trialCreditCode}
+          trialClassAt={trialClassAt}
+        />
+      ) : null}
 
       {customer.memberships.length > 1 ? (
         <div className="card p-6">

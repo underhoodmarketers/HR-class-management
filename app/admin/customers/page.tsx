@@ -119,6 +119,10 @@ export default async function CustomersPage({
     return true;
   });
 
+  const backQuery = new URLSearchParams(
+    Object.entries(searchParams).filter(([k, v]) => v && k !== "deleted") as [string, string][]
+  ).toString();
+
   const cmp: Record<SortField, (a: (typeof withCurrent)[number], b: (typeof withCurrent)[number]) => number> = {
     name: (a, b) => a.name.localeCompare(b.name),
     contact: (a, b) => a.email.localeCompare(b.email),
@@ -183,7 +187,10 @@ export default async function CustomersPage({
             {filtered.map((c) => (
               <tr key={c.id} className="hover:bg-blush/20">
                 <td className="px-5 py-3">
-                  <Link href={`/admin/customers/${c.id}`} className="font-medium text-magenta-deep hover:underline">
+                  <Link
+                    href={`/admin/customers/${c.id}${backQuery ? `?from=${encodeURIComponent(backQuery)}` : ""}`}
+                    className="font-medium text-magenta-deep hover:underline"
+                  >
                     {c.name}
                   </Link>
                 </td>

@@ -147,6 +147,9 @@ export const memberships = pgTable("memberships", {
   stripeSessionId: varchar("stripe_session_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
   billingType: varchar("billing_type", { length: 16 }).notNull().default("one_time"), // one_time | recurring
+  // Set once an admin issues a $20-off promo code converting this trial
+  // (Drop-In) booking into credit toward a real package — null until then.
+  trialCreditCode: varchar("trial_credit_code", { length: 50 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

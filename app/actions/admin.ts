@@ -821,6 +821,65 @@ export async function unfreezeMembership(formData: FormData) {
 }
 
 /**
+ * Converts a same-day trial (Drop-In) booking into a $20-off promo code,
+ * as an alternative to an actual Stripe refund — only valid while the
+ * trial class is within the last 24 hours and hasn't already been converted.
+ */
+export async function issueTrialCreditCode(formData: FormData) {
+  await requireAdmin();
+  const customerId = Number(formData.get("customerId"));
+  const membershipId = Number(formData.get("membershipId"));
+  if (!customerId || !membershipId) redirect("/admin/customers?error=invalid");
+
+  if (!stripeConfigured()) {
+    redirect(`/admin/customers/${customerId}?error=stripe_not_configured`);
+  }
+
+  const membership = await db.query.memberships.findFirst({
+    where: and(eq(memberships.id, membershipId), eq(memberships.userId, customerId)),
+    with: { package: true },
+  });
+  if (!membership || membership.package.name !== "Drop-In (1 Class)" || membership.trialCreditCode) {
+    redirect(`/admin/customers/${customerId}`);
+  }
+
+  const trialBooking = await db.query.bookings.findFirst({
+    where: and(eq(bookings.membershipId, membershipId), eq(bookings.status, "booked")),
+    with: { session: true },
+    orderBy: [desc(bookings.createdAt)],
+  });
+  const hoursSinceClass = trialBooking
+    ? (Date.now() - trialBooking.session.startsAt.getTime()) / (60 * 60 * 1000)
+    : null;
+  if (hoursSinceClass === null || hoursSinceClass < 0 || hoursSinceClass > 24) {
+    redirect(`/admin/customers/${customerId}?error=trial_window_expired`);
+  }
+
+  const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  try {
+    const coupon = await stripe.coupons.create({
+      amount_off: 2000,
+      currency: "usd",
+      duration: "once",
+      name: `Trial credit (membership #${membership.id})`,
+    });
+    await stripe.promotionCodes.create({
+      coupon: coupon.id,
+      code,
+      active: true,
+      max_redemptions: 1,
+    });
+  } catch {
+    redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
+  }
+
+  await db.update(memberships).set({ trialCreditCode: code }).where(eq(memberships.id, membershipId));
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?trial_code=${code}`);
+}
+
+/**
  * Manually grants a customer a membership — e.g. comping a package, or
  * entering a customer's existing package from before they were on this
  * system. Rolls over any leftover credits from their prior membership(s)
