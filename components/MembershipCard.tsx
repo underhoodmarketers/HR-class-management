@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { updateMembership, createMembershipForCustomer } from "@/app/actions/admin";
+import {
+  updateMembership,
+  createMembershipForCustomer,
+  freezeMembership,
+  unfreezeMembership,
+} from "@/app/actions/admin";
 import { formatDay, formatMoney, studioDateKey, parseFlexibleDate, addDaysToDateKey } from "@/lib/utils";
 import { SubmitButton } from "./SubmitButton";
 
@@ -9,10 +14,12 @@ type Membership = {
   id: number;
   packageId: number;
   packageName: string;
+  packageCredits: number | null;
   status: string;
   creditsRemaining: number | null;
   startsAt: Date;
   endsAt: Date;
+  frozenAt: Date | null;
   billingType: string;
 };
 
@@ -58,6 +65,36 @@ function DateField({
       className="input"
     />
   );
+}
+
+/** Credits/weeks used vs. left. A freeze stops the weeks clock but never
+ * credits, since a frozen membership can't be booked against. */
+function usageSummary(membership: Membership) {
+  const now = new Date();
+  const totalDays = Math.round((membership.endsAt.getTime() - membership.startsAt.getTime()) / 86400000);
+  const totalWeeks = Math.max(1, Math.round(totalDays / 7));
+
+  let elapsedDays: number;
+  if (membership.frozenAt) {
+    elapsedDays = Math.round((membership.frozenAt.getTime() - membership.startsAt.getTime()) / 86400000);
+  } else if (now.getTime() >= membership.endsAt.getTime()) {
+    elapsedDays = totalDays;
+  } else if (now.getTime() <= membership.startsAt.getTime()) {
+    elapsedDays = 0;
+  } else {
+    elapsedDays = Math.round((now.getTime() - membership.startsAt.getTime()) / 86400000);
+  }
+  elapsedDays = Math.min(Math.max(elapsedDays, 0), totalDays);
+
+  const weeksUsed = Math.min(totalWeeks, Math.round(elapsedDays / 7));
+  const weeksLeft = Math.max(0, totalWeeks - weeksUsed);
+
+  const creditsUsed =
+    membership.packageCredits !== null && membership.creditsRemaining !== null
+      ? membership.packageCredits - membership.creditsRemaining
+      : null;
+
+  return { totalWeeks, weeksUsed, weeksLeft, creditsUsed };
 }
 
 export default function MembershipCard({
@@ -136,11 +173,41 @@ export default function MembershipCard({
     );
   }
 
+  const usage = usageSummary(membership);
+  const isFrozen = Boolean(membership.frozenAt);
+
   return (
     <div className="card p-6">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-700 uppercase tracking-wide text-ink/50">Membership</h2>
         <div className="flex items-center gap-3">
+          {isFrozen ? (
+            <form action={unfreezeMembership}>
+              <input type="hidden" name="id" value={membership.id} />
+              <input type="hidden" name="customerId" value={customerId} />
+              <button type="submit" className="text-xs font-semibold text-emerald-700 hover:underline">
+                Unfreeze
+              </button>
+            </form>
+          ) : (
+            <form
+              action={freezeMembership}
+              onSubmit={(e) => {
+                if (
+                  !confirm(
+                    "Freeze this membership?\n\nThe customer won't be able to book classes with it until you unfreeze it. The paused time is added back onto the end date when resumed."
+                  )
+                )
+                  e.preventDefault();
+              }}
+            >
+              <input type="hidden" name="id" value={membership.id} />
+              <input type="hidden" name="customerId" value={customerId} />
+              <button type="submit" className="text-xs text-magenta hover:underline">
+                Freeze
+              </button>
+            </form>
+          )}
           <button
             type="button"
             onClick={() => setMode("create")}
@@ -161,13 +228,35 @@ export default function MembershipCard({
         <div><dt className="text-ink/40">Package</dt><dd>{membership.packageName}</dd></div>
         <div>
           <dt className="text-ink/40">Status</dt>
-          <dd><span className="badge bg-blush text-magenta-deep">{membership.status}</span></dd>
+          <dd>
+            <span className={`badge ${isFrozen ? "bg-sky-100 text-sky-700" : "bg-blush text-magenta-deep"}`}>
+              {membership.status}
+            </span>
+            {isFrozen ? (
+              <span className="ml-2 text-xs text-ink/40">since {formatDay(membership.frozenAt!)}</span>
+            ) : null}
+          </dd>
         </div>
         <div><dt className="text-ink/40">First day</dt><dd>{formatDay(membership.startsAt)}</dd></div>
         <div><dt className="text-ink/40">Last day</dt><dd>{formatDay(membership.endsAt)}</dd></div>
         <div>
-          <dt className="text-ink/40">Credits remaining</dt>
-          <dd>{membership.creditsRemaining === null ? "Unlimited" : membership.creditsRemaining}</dd>
+          <dt className="text-ink/40">Credits</dt>
+          <dd>
+            {membership.creditsRemaining === null ? (
+              "Unlimited"
+            ) : (
+              <>
+                {usage.creditsUsed ?? "—"} used · {membership.creditsRemaining} left
+                {membership.packageCredits !== null ? ` (of ${membership.packageCredits})` : ""}
+              </>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-ink/40">Weeks</dt>
+          <dd>
+            {usage.weeksUsed} used · {usage.weeksLeft} left (of {usage.totalWeeks})
+          </dd>
         </div>
         <div>
           <dt className="text-ink/40">Classes attended (this package)</dt>

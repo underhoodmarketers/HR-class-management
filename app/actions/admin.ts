@@ -754,13 +754,70 @@ export async function updateMembership(formData: FormData) {
     redirect(`/admin/customers/${customerId}?error=membership_invalid`);
   }
 
+  // "Frozen" isn't a choice on this form — it's only set via the dedicated
+  // Freeze button — so any manual save here means the membership shouldn't
+  // be left in a stuck frozen state.
   await db
     .update(memberships)
-    .set({ packageId, status, creditsRemaining, startsAt, endsAt, billingType })
+    .set({ packageId, status, creditsRemaining, startsAt, endsAt, billingType, frozenAt: null })
     .where(and(eq(memberships.id, id), eq(memberships.userId, customerId)));
 
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?membership_updated=1`);
+}
+
+/**
+ * Admin-only pause: the membership stops being usable for booking (same as
+ * any other non-"active" status) and its clock stops — the paused span gets
+ * added back onto endsAt when resumed, so the customer doesn't lose any
+ * paid-for time.
+ */
+export async function freezeMembership(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const customerId = Number(formData.get("customerId"));
+  if (!id || !customerId) redirect("/admin/customers?error=invalid");
+
+  const membership = await db.query.memberships.findFirst({
+    where: and(eq(memberships.id, id), eq(memberships.userId, customerId)),
+  });
+  if (!membership || membership.frozenAt || membership.status !== "active") {
+    redirect(`/admin/customers/${customerId}`);
+  }
+
+  await db
+    .update(memberships)
+    .set({ status: "frozen", frozenAt: new Date() })
+    .where(eq(memberships.id, id));
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?membership_frozen=1`);
+}
+
+export async function unfreezeMembership(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const customerId = Number(formData.get("customerId"));
+  if (!id || !customerId) redirect("/admin/customers?error=invalid");
+
+  const membership = await db.query.memberships.findFirst({
+    where: and(eq(memberships.id, id), eq(memberships.userId, customerId)),
+  });
+  if (!membership || !membership.frozenAt) {
+    redirect(`/admin/customers/${customerId}`);
+  }
+
+  const frozenMs = Date.now() - membership.frozenAt!.getTime();
+  const frozenDays = Math.max(0, Math.round(frozenMs / (24 * 60 * 60 * 1000)));
+  const newEndsAt = new Date(membership.endsAt.getTime() + frozenDays * 24 * 60 * 60 * 1000);
+
+  await db
+    .update(memberships)
+    .set({ status: "active", frozenAt: null, endsAt: newEndsAt })
+    .where(eq(memberships.id, id));
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?membership_unfrozen=${frozenDays}`);
 }
 
 /**

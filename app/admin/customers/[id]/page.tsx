@@ -29,6 +29,8 @@ export default async function CustomerDetail({
     error?: string;
     membership_updated?: string;
     membership_created?: string;
+    membership_frozen?: string;
+    membership_unfrozen?: string;
     notes_updated?: string;
   };
 }) {
@@ -83,6 +85,15 @@ export default async function CustomerDetail({
       ? { tone: "ok" as const, text: "Membership updated." }
       : searchParams.membership_created
       ? { tone: "ok" as const, text: "Membership added." }
+      : searchParams.membership_frozen
+      ? { tone: "ok" as const, text: "Membership frozen." }
+      : searchParams.membership_unfrozen
+      ? {
+          tone: "ok" as const,
+          text: `Membership resumed — end date extended by ${searchParams.membership_unfrozen} day${
+            searchParams.membership_unfrozen === "1" ? "" : "s"
+          }.`,
+        }
       : searchParams.notes_updated
       ? { tone: "ok" as const, text: "Notes updated." }
       : null;
@@ -150,10 +161,12 @@ export default async function CustomerDetail({
                   id: currentMembership.id,
                   packageId: currentMembership.packageId,
                   packageName: currentMembership.package.name,
+                  packageCredits: currentMembership.package.credits,
                   status: currentMembership.status,
                   creditsRemaining: currentMembership.creditsRemaining,
                   startsAt: currentMembership.startsAt,
                   endsAt: currentMembership.endsAt,
+                  frozenAt: currentMembership.frozenAt,
                   billingType: currentMembership.billingType,
                 }
               : null

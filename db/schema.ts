@@ -133,10 +133,14 @@ export const memberships = pgTable("memberships", {
   packageId: integer("package_id")
     .notNull()
     .references(() => packages.id),
-  status: varchar("status", { length: 16 }).notNull().default("active"), // active | expired | pending
+  status: varchar("status", { length: 16 }).notNull().default("active"), // active | expired | pending | frozen
   creditsRemaining: integer("credits_remaining"), // null = unlimited
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  // When the current freeze started (admin-only pause) — null if not frozen.
+  // On resume, the frozen span is added back onto endsAt so the customer
+  // doesn't lose paid-for time, then this is cleared.
+  frozenAt: timestamp("frozen_at", { withTimezone: true }),
   // Checkout session id (one-time purchases) or invoice id (subscription
   // renewals) that created this row — kept unique so webhook retries can't
   // double-grant credits.
