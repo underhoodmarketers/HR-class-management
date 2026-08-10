@@ -132,13 +132,18 @@ export default async function LocationFinancesPage({
         });
       }
 
-      ledger.sort((a, b) => a.date.getTime() - b.date.getTime());
+      // Drop $0 rows (trials, comps) and third-party marketplace signups
+      // (ClassPass/Wellhub) — not real studio revenue for this ledger.
+      const cleaned = ledger.filter(
+        (row) => row.amountCents !== 0 && !/classpass|wellhub/i.test(row.description)
+      );
+      cleaned.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-      const totalRevenueCents = ledger.filter((r) => r.type === "Revenue").reduce((sum, r) => sum + r.amountCents, 0);
-      const totalExpenseCents = -ledger.filter((r) => r.type === "Expense").reduce((sum, r) => sum + r.amountCents, 0);
+      const totalRevenueCents = cleaned.filter((r) => r.type === "Revenue").reduce((sum, r) => sum + r.amountCents, 0);
+      const totalExpenseCents = -cleaned.filter((r) => r.type === "Expense").reduce((sum, r) => sum + r.amountCents, 0);
       const netCents = totalRevenueCents - totalExpenseCents;
 
-      return { location, ledger, totalRevenueCents, totalExpenseCents, netCents };
+      return { location, ledger: cleaned, totalRevenueCents, totalExpenseCents, netCents };
     })
     .filter((r) => r.ledger.length > 0);
 
