@@ -22,6 +22,14 @@ const errorMessages: Record<string, string> = {
   invalid: "Fill in a date, category, and an amount greater than $0.",
 };
 
+type LedgerRow = {
+  date: Date;
+  type: "Revenue" | "Expense";
+  description: string;
+  amountCents: number; // signed: positive for revenue, negative for expense
+  expenseId?: number; // present only for deletable manual expense rows
+};
+
 export default async function LocationFinancesPage({
   searchParams,
 }: {
@@ -46,7 +54,6 @@ export default async function LocationFinancesPage({
     }),
     db.query.locationExpenses.findMany({
       where: and(gte(locationExpenses.date, monthStartStr), lt(locationExpenses.date, monthEndStr)),
-      orderBy: (e, { asc }) => [asc(e.date)],
     }),
     db.query.locationRevenueHistory.findMany({
       where: and(gte(locationRevenueHistory.date, monthStartStr), lt(locationRevenueHistory.date, monthEndStr)),
@@ -57,7 +64,7 @@ export default async function LocationFinancesPage({
         lt(memberships.createdAt, monthEnd),
         inArray(memberships.billingType, ["one_time", "recurring", "zelle"])
       ),
-      with: { package: true, user: { columns: { locationId: true } } },
+      with: { package: true, user: { columns: { name: true, locationId: true } } },
     }),
   ]);
 
@@ -75,34 +82,50 @@ export default async function LocationFinancesPage({
       ).length;
       const instructorCents = instructorClasses * INSTRUCTOR_RATE_CENTS;
 
-      const locExpenses = expenses.filter((e) => e.locationId === location.id);
-      const manualExpenseCents = locExpenses.reduce((sum, e) => sum + e.amountCents, 0);
-      const totalExpenseCents = instructorCents + manualExpenseCents;
+      const ledger: LedgerRow[] = [];
 
-      const historicalRevenueCents = revenueHistory
-        .filter((r) => r.locationId === location.id)
-        .reduce((sum, r) => sum + r.amountCents, 0);
-      const liveRevenueCents = liveMemberships
-        .filter((m) => m.user.locationId === location.id)
-        .reduce((sum, m) => sum + m.package.priceCents, 0);
-      const totalRevenueCents = historicalRevenueCents + liveRevenueCents;
+      for (const r of revenueHistory.filter((r) => r.locationId === location.id)) {
+        ledger.push({
+          date: fromStudioTime(`${r.date}T12:00`),
+          type: "Revenue",
+          description: r.customerName ? r.customerName + (r.comment ? ` (${r.comment})` : "") : r.comment || "Registration",
+          amountCents: r.amountCents,
+        });
+      }
+      for (const m of liveMemberships.filter((m) => m.user.locationId === location.id)) {
+        ledger.push({
+          date: m.createdAt,
+          type: "Revenue",
+          description: `${m.user.name} — ${m.package.name}`,
+          amountCents: m.package.priceCents,
+        });
+      }
+      for (const e of expenses.filter((e) => e.locationId === location.id)) {
+        ledger.push({
+          date: fromStudioTime(`${e.date}T12:00`),
+          type: "Expense",
+          description: e.category + (e.comment ? ` — ${e.comment}` : ""),
+          amountCents: -e.amountCents,
+          expenseId: e.id,
+        });
+      }
+      if (instructorClasses > 0) {
+        ledger.push({
+          date: monthStart,
+          type: "Expense",
+          description: `Instructor pay (${instructorClasses} class${instructorClasses === 1 ? "" : "es"})`,
+          amountCents: -instructorCents,
+        });
+      }
+      ledger.sort((a, b) => a.date.getTime() - b.date.getTime());
 
+      const totalRevenueCents = ledger.filter((r) => r.type === "Revenue").reduce((sum, r) => sum + r.amountCents, 0);
+      const totalExpenseCents = -ledger.filter((r) => r.type === "Expense").reduce((sum, r) => sum + r.amountCents, 0);
       const netCents = totalRevenueCents - totalExpenseCents;
-      const hasActivity =
-        instructorClasses > 0 || locExpenses.length > 0 || totalRevenueCents > 0;
 
-      return {
-        location,
-        instructorClasses,
-        instructorCents,
-        locExpenses,
-        totalExpenseCents,
-        totalRevenueCents,
-        netCents,
-        hasActivity,
-      };
+      return { location, ledger, totalRevenueCents, totalExpenseCents, netCents };
     })
-    .filter((r) => r.hasActivity);
+    .filter((r) => r.ledger.length > 0);
 
   const grandRevenue = rows.reduce((sum, r) => sum + r.totalRevenueCents, 0);
   const grandExpense = rows.reduce((sum, r) => sum + r.totalExpenseCents, 0);
@@ -164,48 +187,78 @@ export default async function LocationFinancesPage({
       {rows.length === 0 ? (
         <div className="card p-8 text-center text-ink/40">No activity this month.</div>
       ) : (
-        rows.map(({ location, instructorClasses, instructorCents, locExpenses, totalExpenseCents, totalRevenueCents, netCents }) => (
-          <div key={location.id} className="card p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        rows.map(({ location, ledger, netCents }) => (
+          <div key={location.id} className="card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/5 p-5">
               <p className="font-600">{location.name}</p>
-              <div className="flex gap-4 text-sm">
-                <span className="text-ink/50">Revenue <span className="font-600 text-ink/80">{formatMoney(totalRevenueCents)}</span></span>
-                <span className="text-ink/50">Expenses <span className="font-600 text-ink/80">{formatMoney(totalExpenseCents)}</span></span>
-                <span className={netCents < 0 ? "text-red-600" : "text-emerald-600"}>
-                  Net <span className="font-600">{formatMoney(netCents)}</span>
-                </span>
-              </div>
+              <span className={netCents < 0 ? "text-red-600" : "text-emerald-600"}>
+                Net <span className="font-600">{formatMoney(netCents)}</span>
+              </span>
             </div>
 
-            <ul className="divide-y divide-ink/5 text-sm">
-              <li className="flex items-center justify-between py-2">
-                <span>
-                  Instructor pay · {instructorClasses} class{instructorClasses === 1 ? "" : "es"}
-                </span>
-                <span className="text-ink/50">{formatMoney(instructorCents)}</span>
-              </li>
-              {locExpenses.map((e) => (
-                <li key={e.id} className="flex items-center justify-between py-2">
-                  <span>
-                    {e.category}
-                    {e.comment ? <span className="text-ink/40"> · {e.comment}</span> : null} ·{" "}
-                    {formatDay(fromStudioTime(`${e.date}T12:00`))}
-                  </span>
-                  <span className="flex items-center gap-3">
-                    <span className="text-ink/50">{formatMoney(e.amountCents)}</span>
-                    <ConfirmDeleteButton
-                      id={e.id}
-                      action={deleteLocationExpense}
-                      confirmText={`Delete this ${e.category} expense (${formatMoney(e.amountCents)})?`}
-                      className="text-xs text-red-600 hover:underline"
-                      extraFields={{ month: monthKey }}
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-blush/50 text-left text-xs uppercase tracking-wide text-ink/50">
+                  <tr>
+                    <th className="px-5 py-2.5 font-semibold">Date</th>
+                    <th className="px-5 py-2.5 font-semibold">Type</th>
+                    <th className="px-5 py-2.5 font-semibold">Description</th>
+                    <th className="px-5 py-2.5 text-right font-semibold">Amount</th>
+                    <th className="px-5 py-2.5 font-semibold"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink/5">
+                  {ledger.map((row, i) => (
+                    <tr key={i}>
+                      <td className="whitespace-nowrap px-5 py-2 text-ink/60">{formatDay(row.date)}</td>
+                      <td className="px-5 py-2">
+                        <span
+                          className={`badge ${
+                            row.type === "Revenue" ? "bg-emerald-100 text-emerald-700" : "bg-blush text-magenta-deep"
+                          }`}
+                        >
+                          {row.type}
+                        </span>
+                      </td>
+                      <td className="px-5 py-2 text-ink/70">{row.description}</td>
+                      <td
+                        className={`whitespace-nowrap px-5 py-2 text-right font-medium ${
+                          row.amountCents < 0 ? "text-red-600" : "text-emerald-600"
+                        }`}
+                      >
+                        {row.amountCents < 0 ? "-" : ""}
+                        {formatMoney(Math.abs(row.amountCents))}
+                      </td>
+                      <td className="px-5 py-2 text-right">
+                        {row.expenseId ? (
+                          <ConfirmDeleteButton
+                            id={row.expenseId}
+                            action={deleteLocationExpense}
+                            confirmText={`Delete this expense (${formatMoney(-row.amountCents)})?`}
+                            className="text-xs text-red-600 hover:underline"
+                            extraFields={{ month: monthKey }}
+                          />
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-ink/10 bg-blush/20 font-600">
+                    <td className="px-5 py-2.5" colSpan={3}>
+                      Total
+                    </td>
+                    <td className={`whitespace-nowrap px-5 py-2.5 text-right ${netCents < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      {netCents < 0 ? "-" : ""}
+                      {formatMoney(Math.abs(netCents))}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
-            <form action={addLocationExpense} className="mt-4 flex flex-wrap items-end gap-2 border-t border-ink/5 pt-4">
+            <form action={addLocationExpense} className="flex flex-wrap items-end gap-2 border-t border-ink/5 p-5">
               <input type="hidden" name="locationId" value={location.id} />
               <input type="hidden" name="month" value={monthKey} />
               <div>
