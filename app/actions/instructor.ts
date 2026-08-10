@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { bookings, classSessions, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
-import { sendBulkEmail } from "@/lib/email";
+import { sendBulkEmail, sendSingleEmail } from "@/lib/email";
 
 /**
  * Books a customer into a class from the instructor portal — e.g. a walk-in
@@ -136,4 +136,40 @@ export async function sendInstructorBulkEmail(formData: FormData) {
   const { sent } = await sendBulkEmail(`${instructor.name} <${instructor.email}>`, recipients, subject, body);
 
   redirect(`/instructor?email_sent=${sent}`);
+}
+
+/**
+ * Emails a single customer, scoped to only customers at the instructor's
+ * own studio(s) — same restriction as the bulk version, enforced
+ * server-side regardless of what the customer list UI already filters to.
+ */
+export async function sendInstructorCustomerEmail(formData: FormData) {
+  const session = await requireInstructor();
+  const customerId = Number(formData.get("customerId"));
+  const subject = String(formData.get("subject") || "").trim();
+  const body = String(formData.get("body") || "").trim();
+
+  if (!customerId || !subject || !body) {
+    redirect("/instructor/customers?error=email_invalid");
+  }
+
+  const [instructor, myLocations] = await Promise.all([
+    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
+    db.query.instructorLocations.findMany({ where: eq(instructorLocations.userId, session.userId) }),
+  ]);
+  const locationIds = myLocations.map((l) => l.locationId);
+  if (!instructor || locationIds.length === 0) {
+    redirect("/instructor/customers?error=email_invalid");
+  }
+
+  const customer = await db.query.users.findFirst({
+    where: and(eq(users.id, customerId), eq(users.role, "customer"), inArray(users.locationId, locationIds)),
+  });
+  if (!customer) {
+    redirect("/instructor/customers?error=email_invalid");
+  }
+
+  await sendSingleEmail(`${instructor.name} <${instructor.email}>`, customer.email, subject, body);
+
+  redirect("/instructor/customers?email_sent=1");
 }

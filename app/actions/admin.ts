@@ -38,7 +38,7 @@ import {
 } from "@/lib/utils";
 import { randomUUID } from "crypto";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { sendPackagePurchaseEmail, sendBulkEmail } from "@/lib/email";
+import { sendPackagePurchaseEmail, sendBulkEmail, sendSingleEmail } from "@/lib/email";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -1198,4 +1198,32 @@ export async function sendAdminBulkEmail(formData: FormData) {
   );
 
   redirect(`/admin?email_sent=${sent}`);
+}
+
+export async function sendAdminCustomerEmail(formData: FormData) {
+  await requireAdmin();
+  const customerId = Number(formData.get("customerId"));
+  const subject = String(formData.get("subject") || "").trim();
+  const body = String(formData.get("body") || "").trim();
+  const redirectQuery = String(formData.get("redirectQuery") || "");
+
+  const params = new URLSearchParams(redirectQuery);
+
+  if (!customerId || !subject || !body) {
+    params.set("error", "email_invalid");
+    redirect(`/admin/customers?${params.toString()}`);
+  }
+
+  const customer = await db.query.users.findFirst({
+    where: and(eq(users.id, customerId), eq(users.role, "customer")),
+  });
+  if (!customer) {
+    params.set("error", "email_invalid");
+    redirect(`/admin/customers?${params.toString()}`);
+  }
+
+  await sendSingleEmail("Holistic Rhythm <team@myholisticrhythm.com>", customer.email, subject, body);
+
+  params.set("email_sent", "1");
+  redirect(`/admin/customers?${params.toString()}`);
 }

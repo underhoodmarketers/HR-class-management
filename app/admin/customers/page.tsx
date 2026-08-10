@@ -2,10 +2,15 @@ import Link from "next/link";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { locations, users } from "@/db/schema";
-import { deleteCustomer } from "@/app/actions/admin";
+import { deleteCustomer, sendAdminCustomerEmail } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import CustomersFilterBar from "@/components/CustomersFilterBar";
+import EmailCustomerButton from "@/components/EmailCustomerButton";
 import { formatDay } from "@/lib/utils";
+
+const errorMessages: Record<string, string> = {
+  email_invalid: "Fill in a subject and a message.",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +66,8 @@ export default async function CustomersPage({
     waiver?: string;
     sort?: string;
     dir?: string;
+    email_sent?: string;
+    error?: string;
   };
 }) {
   const now = new Date();
@@ -120,7 +127,9 @@ export default async function CustomersPage({
   });
 
   const backQuery = new URLSearchParams(
-    Object.entries(searchParams).filter(([k, v]) => v && k !== "deleted") as [string, string][]
+    Object.entries(searchParams).filter(
+      ([k, v]) => v && !["deleted", "email_sent", "error"].includes(k)
+    ) as [string, string][]
   ).toString();
 
   const cmp: Record<SortField, (a: (typeof withCurrent)[number], b: (typeof withCurrent)[number]) => number> = {
@@ -152,6 +161,14 @@ export default async function CustomersPage({
       {searchParams.deleted ? (
         <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
           Customer deleted.
+        </div>
+      ) : searchParams.email_sent ? (
+        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
+          Email sent.
+        </div>
+      ) : searchParams.error && errorMessages[searchParams.error] ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {errorMessages[searchParams.error]}
         </div>
       ) : null}
 
@@ -225,12 +242,20 @@ export default async function CustomersPage({
                   )}
                 </td>
                 <td className="px-5 py-3 text-right">
-                  <ConfirmDeleteButton
-                    id={c.id}
-                    action={deleteCustomer}
-                    confirmText={`Delete ${c.name}?\n\nThis removes their account, memberships, bookings, and waiver record. This can't be undone.`}
-                    className="rounded-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <EmailCustomerButton
+                      customerId={c.id}
+                      customerName={c.name}
+                      action={sendAdminCustomerEmail}
+                      redirectQuery={backQuery}
+                    />
+                    <ConfirmDeleteButton
+                      id={c.id}
+                      action={deleteCustomer}
+                      confirmText={`Delete ${c.name}?\n\nThis removes their account, memberships, bookings, and waiver record. This can't be undone.`}
+                      className="rounded-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

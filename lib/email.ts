@@ -27,6 +27,19 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   });
 }
 
+/** A direct, personal email to one customer — "to" is the customer themselves. */
+export async function sendSingleEmail(from: string, to: string, subject: string, body: string): Promise<void> {
+  if (!emailConfigured()) {
+    console.warn(`RESEND_API_KEY not set — skipped email to ${to}`);
+    return;
+  }
+  const html = body
+    .split("\n")
+    .map((line) => `<p>${line.trim() ? line : "&nbsp;"}</p>`)
+    .join("");
+  await resend.emails.send({ from, to, subject, html });
+}
+
 /**
  * Sends one message per batch of recipients, with the real addresses in
  * bcc (so nobody sees the rest of the list) and "to" set to the sender

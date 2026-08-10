@@ -2,11 +2,21 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
+import { sendInstructorCustomerEmail } from "@/app/actions/instructor";
+import EmailCustomerButton from "@/components/EmailCustomerButton";
 import { formatDay, formatBirthday } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function InstructorCustomersPage() {
+const errorMessages: Record<string, string> = {
+  email_invalid: "Fill in a subject and a message.",
+};
+
+export default async function InstructorCustomersPage({
+  searchParams,
+}: {
+  searchParams: { email_sent?: string; error?: string };
+}) {
   const session = await requireInstructor();
   const now = new Date();
 
@@ -38,6 +48,16 @@ export default async function InstructorCustomersPage() {
         </p>
       </div>
 
+      {searchParams.email_sent ? (
+        <div className="rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep">
+          Email sent.
+        </div>
+      ) : searchParams.error && errorMessages[searchParams.error] ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {errorMessages[searchParams.error]}
+        </div>
+      ) : null}
+
       {myLocations.length === 0 ? (
         <div className="card p-6 text-sm text-ink/50">
           You&apos;re not assigned to a studio yet. Ask an admin to assign one.
@@ -52,6 +72,7 @@ export default async function InstructorCustomersPage() {
                 <th className="px-5 py-3 font-semibold">Membership</th>
                 <th className="px-5 py-3 font-semibold">Expires</th>
                 <th className="px-5 py-3 font-semibold">Birthday</th>
+                <th className="px-5 py-3 font-semibold"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink/5">
@@ -85,12 +106,19 @@ export default async function InstructorCustomersPage() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-ink/60">{formatBirthday(c.dob)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <EmailCustomerButton
+                        customerId={c.id}
+                        customerName={c.name}
+                        action={sendInstructorCustomerEmail}
+                      />
+                    </td>
                   </tr>
                 );
               })}
               {scoped.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-ink/40">
+                  <td colSpan={6} className="px-5 py-8 text-center text-ink/40">
                     No customers at your studio yet.
                   </td>
                 </tr>
