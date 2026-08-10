@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -55,14 +54,6 @@ export default async function AdminProfilePage({
           <div><dt className="text-ink/40">Email</dt><dd>{profile.email}</dd></div>
         </dl>
       </div>
-
-      <Link href="/admin/instructor-pay" className="card flex items-center justify-between p-6 hover:bg-blush/20">
-        <div>
-          <h2 className="font-600">Instructor pay</h2>
-          <p className="text-sm text-ink/50">Classes taught and pay owed, by instructor and month.</p>
-        </div>
-        <span className="text-magenta">→</span>
-      </Link>
 
       <ChangePasswordCard redirectTo="/admin/profile" />
     </div>

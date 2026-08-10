@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { locations, users } from "@/db/schema";
@@ -36,11 +37,16 @@ export default async function InstructorsPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-600">Instructors</h1>
-        <p className="text-sm text-ink/50">
-          Staff accounts that can see customers and class rosters for their assigned studio(s).
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-600">Instructors</h1>
+          <p className="text-sm text-ink/50">
+            Staff accounts that can see customers and class rosters for their assigned studio(s).
+          </p>
+        </div>
+        <Link href="/admin/instructor-pay" className="btn-subtle whitespace-nowrap px-4 py-2 text-sm">
+          Instructor pay →
+        </Link>
       </div>
 
       {banner ? (

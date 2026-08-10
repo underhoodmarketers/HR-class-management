@@ -29,7 +29,8 @@ export default async function InstructorPayPage({
 }) {
   await requireAdmin();
 
-  const todayKey = studioDateKey(new Date());
+  const now = new Date();
+  const todayKey = studioDateKey(now);
   const monthKey = parseMonthKey(searchParams.month, todayKey.slice(0, 7));
   const monthStart = fromStudioTime(`${monthKey}-01T00:00`);
   const monthEnd = fromStudioTime(`${shiftMonthKey(monthKey, 1)}-01T00:00`);
@@ -66,7 +67,9 @@ export default async function InstructorPayPage({
   const rows = instructors
     .map((instructor) => {
       const mySessions = sessionsFor(instructor).sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-      const completedCount = mySessions.filter((s) => !s.canceled).length;
+      // Only classes that have actually happened count toward pay — a
+      // scheduled-but-not-yet-run class isn't "completed" yet.
+      const completedCount = mySessions.filter((s) => !s.canceled && s.startsAt < now).length;
       const totalCents = completedCount * RATE_CENTS;
       const payout = payoutByInstructor.get(instructor.id);
       return { instructor, sessions: mySessions, completedCount, totalCents, payout };
@@ -82,7 +85,7 @@ export default async function InstructorPayPage({
           <h1 className="font-display text-3xl font-600">Instructor pay</h1>
           <p className="text-sm text-ink/50">Classes taught, computed from class assignments.</p>
         </div>
-        <Link href="/admin/profile" className="text-sm text-magenta">← Profile</Link>
+        <Link href="/admin/instructors" className="text-sm text-magenta">← Instructors</Link>
       </div>
 
       {searchParams.saved ? (
@@ -144,6 +147,8 @@ export default async function InstructorPayPage({
                       {formatDay(s.startsAt)} {formatTime(s.startsAt)}
                       {s.canceled ? (
                         <span className="badge bg-blush text-magenta-deep">Canceled</span>
+                      ) : s.startsAt >= now ? (
+                        <span className="badge bg-blush/60 text-ink/50">Upcoming</span>
                       ) : (
                         <span className="text-xs text-ink/40">{formatMoney(RATE_CENTS)}</span>
                       )}
