@@ -10,6 +10,7 @@ import {
   classTypes,
   instructorLocations,
   instructorPayouts,
+  locationExpenses,
   locations,
   memberships,
   packages,
@@ -1100,4 +1101,43 @@ export async function markInstructorPayout(formData: FormData) {
 
   revalidatePath("/admin/instructor-pay");
   redirect(`/admin/instructor-pay?month=${month}&saved=1`);
+}
+
+// ---------- Location finances ----------
+export async function addLocationExpense(formData: FormData) {
+  await requireAdmin();
+  const locationId = Number(formData.get("locationId"));
+  const month = String(formData.get("month") || "");
+  const date = String(formData.get("date") || "");
+  const category = String(formData.get("category") || "").trim();
+  const amountRaw = String(formData.get("amount") || "").trim();
+  const amount = Number(amountRaw);
+  const comment = String(formData.get("comment") || "").trim() || null;
+
+  const invalid =
+    !locationId || !date || isNaN(Date.parse(date)) || !category || !amountRaw || isNaN(amount) || amount <= 0;
+  if (invalid) {
+    redirect(`/admin/location-finances?month=${month}&error=invalid`);
+  }
+
+  await db.insert(locationExpenses).values({
+    locationId,
+    date,
+    category,
+    amountCents: Math.round(amount * 100),
+    comment,
+  });
+
+  revalidatePath("/admin/location-finances");
+  redirect(`/admin/location-finances?month=${month}&saved=1`);
+}
+
+export async function deleteLocationExpense(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const month = String(formData.get("month") || "");
+  if (!id) return;
+  await db.delete(locationExpenses).where(eq(locationExpenses.id, id));
+  revalidatePath("/admin/location-finances");
+  redirect(`/admin/location-finances?month=${month}&saved=1`);
 }

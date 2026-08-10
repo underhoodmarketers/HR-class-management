@@ -6,12 +6,14 @@ export default function ConfirmDeleteButton({
   confirmText,
   className,
   label = "Delete",
+  extraFields,
 }: {
   id: number;
   action: (formData: FormData) => void | Promise<void>;
   confirmText: string;
   className: string;
   label?: string;
+  extraFields?: Record<string, string | number>;
 }) {
   return (
     <form
@@ -21,6 +23,11 @@ export default function ConfirmDeleteButton({
       }}
     >
       <input type="hidden" name="id" value={id} />
+      {extraFields
+        ? Object.entries(extraFields).map(([key, value]) => (
+            <input key={key} type="hidden" name={key} value={value} />
+          ))
+        : null}
       <button type="submit" className={className}>
         {label}
       </button>

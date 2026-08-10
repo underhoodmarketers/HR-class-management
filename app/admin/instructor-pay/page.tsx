@@ -13,14 +13,12 @@ import {
   parseMonthKey,
   shiftMonthKey,
   monthLabel,
+  INSTRUCTOR_RATE_CENTS,
 } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// Flat rate per completed class — matches the studio's actual pay practice
-// (verified against a full year of manual payroll records). Bump this if
-// that ever changes; per-instructor rates would need a schema field.
-const RATE_CENTS = 2500;
+const RATE_CENTS = INSTRUCTOR_RATE_CENTS;
 
 export default async function InstructorPayPage({
   searchParams,

@@ -10,6 +10,14 @@ export function formatMoney(cents: number) {
   });
 }
 
+// Flat rate per completed class — matches the studio's actual pay practice
+// (verified against a full year of manual payroll records). Bump this if
+// that ever changes; per-instructor rates would need a schema field. Shared
+// between the Instructor Pay report and the per-location revenue/expense
+// report, so instructor cost is computed identically (and only once) in
+// both places.
+export const INSTRUCTOR_RATE_CENTS = 2500;
+
 // Stripe's standard US card rate.
 const STRIPE_PERCENT = 0.029;
 const STRIPE_FIXED_CENTS = 30;

@@ -257,6 +257,37 @@ export const instructorPayouts = pgTable(
   (t) => ({ uniq: uniqueIndex("instructor_payouts_instructor_month_idx").on(t.instructorId, t.month) })
 );
 
+// ---------- Location finances (revenue vs. expenses, per studio) ----------
+// Manually-entered non-instructor costs (studio rent, advertising, etc.) —
+// instructor pay is intentionally excluded here since it's already computed
+// live from class_sessions in the Instructor Pay report; this table would
+// just double-count it.
+export const locationExpenses = pgTable("location_expenses", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id")
+    .notNull()
+    .references(() => locations.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  category: varchar("category", { length: 40 }).notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Historical revenue imported from the old registration sheets, for months
+// before real purchases flowed through the app. Going forward, revenue is
+// computed live from memberships — nothing new should be written here.
+export const locationRevenueHistory = pgTable("location_revenue_history", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id")
+    .notNull()
+    .references(() => locations.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  customerName: varchar("customer_name", { length: 200 }),
+  amountCents: integer("amount_cents").notNull(),
+  comment: text("comment"),
+});
+
 // ---------- Relations ----------
 export const usersRelations = relations(users, ({ one, many }) => ({
   memberships: many(memberships),
@@ -270,6 +301,14 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 
 export const instructorPayoutsRelations = relations(instructorPayouts, ({ one }) => ({
   instructor: one(users, { fields: [instructorPayouts.instructorId], references: [users.id] }),
+}));
+
+export const locationExpensesRelations = relations(locationExpenses, ({ one }) => ({
+  location: one(locations, { fields: [locationExpenses.locationId], references: [locations.id] }),
+}));
+
+export const locationRevenueHistoryRelations = relations(locationRevenueHistory, ({ one }) => ({
+  location: one(locations, { fields: [locationRevenueHistory.locationId], references: [locations.id] }),
 }));
 
 export const zellePaymentsRelations = relations(zellePayments, ({ one }) => ({
