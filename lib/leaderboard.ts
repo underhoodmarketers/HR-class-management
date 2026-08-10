@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, lt, count } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, count } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, classSessions, locations, users } from "@/db/schema";
 import { fromStudioTime, shiftMonthKey, studioDateKey, monthLabel } from "./utils";
@@ -13,7 +13,10 @@ async function attendanceByLocation(start: Date, end: Date): Promise<LocationBoa
   const now = new Date();
   const cappedEnd = end < now ? end : now;
 
-  const allLocations = await db.select().from(locations);
+  const allLocations = await db
+    .select()
+    .from(locations)
+    .where(and(eq(locations.active, true), isNull(locations.archivedAt)));
   const byLocation = new Map<number, LocationBoard>();
   for (const l of allLocations) {
     byLocation.set(l.id, { locationId: l.id, locationName: l.name, rows: [] });
