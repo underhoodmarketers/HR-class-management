@@ -1107,7 +1107,6 @@ export async function markInstructorPayout(formData: FormData) {
 export async function addLocationExpense(formData: FormData) {
   await requireAdmin();
   const locationId = Number(formData.get("locationId"));
-  const month = String(formData.get("month") || "");
   const date = String(formData.get("date") || "");
   const category = String(formData.get("category") || "").trim();
   const amountRaw = String(formData.get("amount") || "").trim();
@@ -1117,7 +1116,7 @@ export async function addLocationExpense(formData: FormData) {
   const invalid =
     !locationId || !date || isNaN(Date.parse(date)) || !category || !amountRaw || isNaN(amount) || amount <= 0;
   if (invalid) {
-    redirect(`/admin/location-finances?month=${month}&error=invalid`);
+    redirect(`/admin/location-finances?error=invalid`);
   }
 
   await db.insert(locationExpenses).values({
@@ -1129,15 +1128,14 @@ export async function addLocationExpense(formData: FormData) {
   });
 
   revalidatePath("/admin/location-finances");
-  redirect(`/admin/location-finances?month=${month}&saved=1`);
+  redirect(`/admin/location-finances?saved=1`);
 }
 
 export async function deleteLocationExpense(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));
-  const month = String(formData.get("month") || "");
   if (!id) return;
   await db.delete(locationExpenses).where(eq(locationExpenses.id, id));
   revalidatePath("/admin/location-finances");
-  redirect(`/admin/location-finances?month=${month}&saved=1`);
+  redirect(`/admin/location-finances?saved=1`);
 }

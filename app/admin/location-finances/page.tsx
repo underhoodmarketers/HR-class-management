@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, locationExpenses, locationRevenueHistory, locations, memberships } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
@@ -10,8 +10,6 @@ import {
   formatMoney,
   fromStudioTime,
   studioDateKey,
-  parseMonthKey,
-  shiftMonthKey,
   monthLabel,
   INSTRUCTOR_RATE_CENTS,
 } from "@/lib/utils";
@@ -21,6 +19,10 @@ export const dynamic = "force-dynamic";
 const errorMessages: Record<string, string> = {
   invalid: "Fill in a date, category, and an amount greater than $0.",
 };
+
+// Some imported sheet comments have embedded newlines — collapse to a
+// single line so table rows stay one line tall.
+const clean = (s: string) => s.replace(/\s*\n+\s*/g, " ").trim();
 
 type LedgerRow = {
   date: Date;
@@ -33,37 +35,21 @@ type LedgerRow = {
 export default async function LocationFinancesPage({
   searchParams,
 }: {
-  searchParams: { month?: string; saved?: string; error?: string };
+  searchParams: { saved?: string; error?: string };
 }) {
   await requireAdmin();
 
   const now = new Date();
-  const todayKey = studioDateKey(now);
-  const monthKey = parseMonthKey(searchParams.month, todayKey.slice(0, 7));
-  const monthStart = fromStudioTime(`${monthKey}-01T00:00`);
-  const monthEnd = fromStudioTime(`${shiftMonthKey(monthKey, 1)}-01T00:00`);
-  const prevMonth = shiftMonthKey(monthKey, -1);
-  const nextMonth = shiftMonthKey(monthKey, 1);
-  const monthStartStr = `${monthKey}-01`;
-  const monthEndStr = `${shiftMonthKey(monthKey, 1)}-01`;
 
   const [allLocations, sessions, expenses, revenueHistory, liveMemberships] = await Promise.all([
     db.select().from(locations),
     db.query.classSessions.findMany({
-      where: and(gte(classSessions.startsAt, monthStart), lt(classSessions.startsAt, monthEnd)),
+      where: and(lt(classSessions.startsAt, now), eq(classSessions.canceled, false)),
     }),
-    db.query.locationExpenses.findMany({
-      where: and(gte(locationExpenses.date, monthStartStr), lt(locationExpenses.date, monthEndStr)),
-    }),
-    db.query.locationRevenueHistory.findMany({
-      where: and(gte(locationRevenueHistory.date, monthStartStr), lt(locationRevenueHistory.date, monthEndStr)),
-    }),
+    db.query.locationExpenses.findMany(),
+    db.query.locationRevenueHistory.findMany(),
     db.query.memberships.findMany({
-      where: and(
-        gte(memberships.createdAt, monthStart),
-        lt(memberships.createdAt, monthEnd),
-        inArray(memberships.billingType, ["one_time", "recurring", "zelle"])
-      ),
+      where: and(lt(memberships.createdAt, now), inArray(memberships.billingType, ["one_time", "recurring", "zelle"])),
       with: { package: true, user: { columns: { name: true, locationId: true } } },
     }),
   ]);
@@ -77,18 +63,15 @@ export default async function LocationFinancesPage({
 
   const rows = allLocations
     .map((location) => {
-      const instructorClasses = sessions.filter(
-        (s) => s.locationId === location.id && !s.canceled && s.startsAt < now
-      ).length;
-      const instructorCents = instructorClasses * INSTRUCTOR_RATE_CENTS;
-
       const ledger: LedgerRow[] = [];
 
       for (const r of revenueHistory.filter((r) => r.locationId === location.id)) {
         ledger.push({
           date: fromStudioTime(`${r.date}T12:00`),
           type: "Revenue",
-          description: r.customerName ? r.customerName + (r.comment ? ` (${r.comment})` : "") : r.comment || "Registration",
+          description: clean(
+            r.customerName ? r.customerName + (r.comment ? ` (${r.comment})` : "") : r.comment || "Registration"
+          ),
           amountCents: r.amountCents,
         });
       }
@@ -104,19 +87,28 @@ export default async function LocationFinancesPage({
         ledger.push({
           date: fromStudioTime(`${e.date}T12:00`),
           type: "Expense",
-          description: e.category + (e.comment ? ` — ${e.comment}` : ""),
+          description: clean(e.category + (e.comment ? ` — ${e.comment}` : "")),
           amountCents: -e.amountCents,
           expenseId: e.id,
         });
       }
-      if (instructorClasses > 0) {
+
+      // Instructor pay, computed live from completed classes — one line per
+      // month so a year of activity doesn't collapse into a single row.
+      const classesByMonth = new Map<string, number>();
+      for (const s of sessions.filter((s) => s.locationId === location.id)) {
+        const key = studioDateKey(s.startsAt).slice(0, 7);
+        classesByMonth.set(key, (classesByMonth.get(key) ?? 0) + 1);
+      }
+      for (const [monthKey, count] of classesByMonth) {
         ledger.push({
-          date: monthStart,
+          date: fromStudioTime(`${monthKey}-01T12:00`),
           type: "Expense",
-          description: `Instructor pay (${instructorClasses} class${instructorClasses === 1 ? "" : "es"})`,
-          amountCents: -instructorCents,
+          description: `Instructor pay — ${monthLabel(monthKey)} (${count} class${count === 1 ? "" : "es"})`,
+          amountCents: -(count * INSTRUCTOR_RATE_CENTS),
         });
       }
+
       ledger.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const totalRevenueCents = ledger.filter((r) => r.type === "Revenue").reduce((sum, r) => sum + r.amountCents, 0);
@@ -135,7 +127,7 @@ export default async function LocationFinancesPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-600">Revenue &amp; expenses</h1>
-          <p className="text-sm text-ink/50">By studio, by month.</p>
+          <p className="text-sm text-ink/50">By studio, all-time through today. Updates as customers sign up.</p>
         </div>
         <Link href="/admin" className="text-sm text-magenta">← Dashboard</Link>
       </div>
@@ -151,21 +143,6 @@ export default async function LocationFinancesPage({
           {banner.text}
         </div>
       ) : null}
-
-      <div className="flex items-center justify-between">
-        <h2 className="font-600">{monthLabel(monthKey)}</h2>
-        <div className="flex items-center gap-1.5">
-          <Link href={`/admin/location-finances?month=${prevMonth}`} className="btn-ghost px-3 py-1.5 text-xs">
-            ‹
-          </Link>
-          <Link href={`/admin/location-finances?month=${todayKey.slice(0, 7)}`} className="btn-ghost px-3 py-1.5 text-xs">
-            This month
-          </Link>
-          <Link href={`/admin/location-finances?month=${nextMonth}`} className="btn-ghost px-3 py-1.5 text-xs">
-            ›
-          </Link>
-        </div>
-      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card p-5">
@@ -185,7 +162,7 @@ export default async function LocationFinancesPage({
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-8 text-center text-ink/40">No activity this month.</div>
+        <div className="card p-8 text-center text-ink/40">No activity yet.</div>
       ) : (
         rows.map(({ location, ledger, netCents }) => (
           <div key={location.id} className="card overflow-hidden">
@@ -236,7 +213,6 @@ export default async function LocationFinancesPage({
                             action={deleteLocationExpense}
                             confirmText={`Delete this expense (${formatMoney(-row.amountCents)})?`}
                             className="text-xs text-red-600 hover:underline"
-                            extraFields={{ month: monthKey }}
                           />
                         ) : null}
                       </td>
@@ -260,7 +236,6 @@ export default async function LocationFinancesPage({
 
             <form action={addLocationExpense} className="flex flex-wrap items-end gap-2 border-t border-ink/5 p-5">
               <input type="hidden" name="locationId" value={location.id} />
-              <input type="hidden" name="month" value={monthKey} />
               <div>
                 <label className="label">Date</label>
                 <input type="date" name="date" required className="input py-1.5 text-sm" />
