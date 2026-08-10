@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, classSessions, instructorLocations, memberships, users } from "@/db/schema";
@@ -79,4 +80,20 @@ export async function instructorBookClass(formData: FormData) {
 
   revalidatePath("/instructor/schedule");
   revalidatePath("/instructor");
+}
+
+export async function updateInstructorProfile(formData: FormData) {
+  const session = await requireInstructor();
+  const phone = String(formData.get("phone") || "").trim();
+  const dob = String(formData.get("dob") || "");
+
+  const invalid = !phone || !dob || isNaN(Date.parse(dob));
+  if (invalid) {
+    redirect("/instructor/profile?error=invalid");
+  }
+
+  await db.update(users).set({ phone, dob }).where(eq(users.id, session.userId));
+
+  revalidatePath("/instructor/profile");
+  redirect("/instructor/profile?updated=1");
 }

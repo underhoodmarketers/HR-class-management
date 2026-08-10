@@ -120,6 +120,9 @@ export default async function InstructorSchedulePage({
     }),
   ]);
 
+  const myLocationIdSet = new Set(myLocationIds);
+  const myCustomers = customers.filter((c) => c.locationId !== null && myLocationIdSet.has(c.locationId));
+
   const byDay = new Map<string, typeof gridSessions>();
   for (const s of gridSessions) {
     const key = studioDateKey(s.startsAt);
@@ -181,7 +184,7 @@ export default async function InstructorSchedulePage({
                     upNext.bookings.filter((b) => b.status === "booked").length >=
                     upNext.capacity
                   }
-                  bookableCustomers={customers
+                  bookableCustomers={myCustomers
                     .filter(
                       (c) =>
                         !upNext.bookings.some(
@@ -336,7 +339,7 @@ export default async function InstructorSchedulePage({
                       full={
                         s.bookings.filter((b) => b.status === "booked").length >= s.capacity
                       }
-                      bookableCustomers={customers
+                      bookableCustomers={myCustomers
                         .filter(
                           (c) =>
                             !s.bookings.some(

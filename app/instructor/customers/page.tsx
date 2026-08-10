@@ -20,22 +20,13 @@ export default async function InstructorCustomersPage() {
   const customers = await db.query.users.findMany({
     where: eq(users.role, "customer"),
     with: {
-      memberships: { with: { package: { with: { locations: true } } } },
+      memberships: { with: { package: true } },
     },
     orderBy: (u, { asc }) => [asc(u.name)],
   });
 
-  // A customer is "yours" if any membership's package includes one of your
-  // studios, or the package has no studio restriction (valid everywhere).
-  const scoped = customers.filter((c) =>
-    c.memberships.some((m) => {
-      const pkgLocations = m.package.locations;
-      return (
-        pkgLocations.length === 0 ||
-        pkgLocations.some((pl) => myLocationIds.has(pl.locationId))
-      );
-    })
-  );
+  // A customer is "yours" if their preferred studio is one you're assigned to.
+  const scoped = customers.filter((c) => c.locationId !== null && myLocationIds.has(c.locationId));
 
   return (
     <div className="space-y-6">
