@@ -34,7 +34,7 @@ import {
 } from "@/lib/utils";
 import { randomUUID } from "crypto";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { sendPackagePurchaseEmail } from "@/lib/email";
+import { sendPackagePurchaseEmail, sendBulkEmail } from "@/lib/email";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -1138,4 +1138,37 @@ export async function deleteLocationExpense(formData: FormData) {
   await db.delete(locationExpenses).where(eq(locationExpenses.id, id));
   revalidatePath("/admin/location-finances");
   redirect(`/admin/location-finances?saved=1`);
+}
+
+// ---------- Bulk email ----------
+export async function sendAdminBulkEmail(formData: FormData) {
+  await requireAdmin();
+  const subject = String(formData.get("subject") || "").trim();
+  const body = String(formData.get("body") || "").trim();
+  const locationIdRaw = String(formData.get("locationId") || "").trim();
+  const locationId = locationIdRaw ? Number(locationIdRaw) : null;
+
+  if (!subject || !body) {
+    redirect("/admin?error=email_invalid");
+  }
+
+  const customers = await db.query.users.findMany({
+    where: locationId
+      ? and(eq(users.role, "customer"), eq(users.locationId, locationId))
+      : eq(users.role, "customer"),
+    columns: { email: true },
+  });
+  const recipients = customers.map((c) => c.email);
+  if (recipients.length === 0) {
+    redirect("/admin?error=email_no_recipients");
+  }
+
+  const { sent } = await sendBulkEmail(
+    "Holistic Rhythm <team@myholisticrhythm.com>",
+    recipients,
+    subject,
+    body
+  );
+
+  redirect(`/admin?email_sent=${sent}`);
 }

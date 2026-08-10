@@ -4,14 +4,34 @@ import { db } from "@/db";
 import { classSessions, instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { formatDay, formatTime, formatBirthday, daysUntilBirthday } from "@/lib/utils";
+import InstructorBulkEmailForm from "@/components/InstructorBulkEmailForm";
 
 export const dynamic = "force-dynamic";
 
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
-export default async function InstructorDashboardPage() {
+const emailErrorMessages: Record<string, string> = {
+  email_invalid: "Fill in a subject and a message.",
+  email_no_recipients: "You don't have any customers to email yet.",
+};
+
+export default async function InstructorDashboardPage({
+  searchParams,
+}: {
+  searchParams: { error?: string; email_sent?: string };
+}) {
   const session = await requireInstructor();
   const now = new Date();
+
+  const emailBanner =
+    searchParams.error && emailErrorMessages[searchParams.error]
+      ? { tone: "error" as const, text: emailErrorMessages[searchParams.error] }
+      : searchParams.email_sent
+      ? {
+          tone: "ok" as const,
+          text: `Email sent to ${searchParams.email_sent} customer${searchParams.email_sent === "1" ? "" : "s"}.`,
+        }
+      : null;
 
   const myLocations = await db.query.instructorLocations.findMany({
     where: eq(instructorLocations.userId, session.userId),
@@ -82,6 +102,18 @@ export default async function InstructorDashboardPage() {
         <h1 className="font-display text-3xl font-600">Dashboard</h1>
         <p className="text-sm text-ink/50">{myLocationNames || "No studio assigned yet"}</p>
       </div>
+
+      {emailBanner ? (
+        <div
+          className={
+            emailBanner.tone === "error"
+              ? "rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              : "rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep"
+          }
+        >
+          {emailBanner.text}
+        </div>
+      ) : null}
 
       {!hasLocations ? (
         <div className="card p-6 text-sm text-ink/50">
@@ -187,6 +219,11 @@ export default async function InstructorDashboardPage() {
             ) : (
               <p className="text-sm text-ink/40">Nothing upcoming.</p>
             )}
+          </div>
+
+          <div className="card p-6">
+            <h2 className="mb-4 font-600">Email your customers</h2>
+            <InstructorBulkEmailForm recipientCount={scoped.length} />
           </div>
         </>
       )}

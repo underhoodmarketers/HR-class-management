@@ -27,6 +27,39 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   });
 }
 
+/**
+ * Sends one message per batch of recipients, with the real addresses in
+ * bcc (so nobody sees the rest of the list) and "to" set to the sender
+ * itself. Batched to stay comfortably under email providers' per-message
+ * recipient limits.
+ */
+export async function sendBulkEmail(
+  from: string,
+  recipients: string[],
+  subject: string,
+  body: string
+): Promise<{ sent: number }> {
+  if (!emailConfigured()) {
+    console.warn(`RESEND_API_KEY not set — skipped bulk email to ${recipients.length} recipients`);
+    return { sent: 0 };
+  }
+  if (recipients.length === 0) return { sent: 0 };
+
+  const html = body
+    .split("\n")
+    .map((line) => `<p>${line.trim() ? line : "&nbsp;"}</p>`)
+    .join("");
+
+  const BATCH_SIZE = 45;
+  let sent = 0;
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const batch = recipients.slice(i, i + BATCH_SIZE);
+    await resend.emails.send({ from, to: from, bcc: batch, subject, html });
+    sent += batch.length;
+  }
+  return { sent };
+}
+
 export async function sendPackagePurchaseEmail(
   to: string,
   details: {

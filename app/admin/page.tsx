@@ -1,15 +1,25 @@
 import Link from "next/link";
-import { and, gte, eq, count } from "drizzle-orm";
+import { and, gte, eq, count, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { users, classSessions, memberships } from "@/db/schema";
+import { users, classSessions, memberships, locations } from "@/db/schema";
 import { formatDay, formatTime } from "@/lib/utils";
+import AdminBulkEmailForm from "@/components/AdminBulkEmailForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminDashboard() {
+const emailErrorMessages: Record<string, string> = {
+  email_invalid: "Fill in a subject and a message.",
+  email_no_recipients: "No customers match that filter.",
+};
+
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: { error?: string; email_sent?: string };
+}) {
   const now = new Date();
 
-  const [[{ value: customerCount }], [{ value: activeMembers }], upcoming] =
+  const [[{ value: customerCount }], [{ value: activeMembers }], upcoming, allLocations, customersByLocation] =
     await Promise.all([
       db.select({ value: count() }).from(users).where(eq(users.role, "customer")),
       db
@@ -22,6 +32,12 @@ export default async function AdminDashboard() {
         orderBy: [classSessions.startsAt],
         limit: 6,
       }),
+      db.select().from(locations).where(and(eq(locations.active, true), isNull(locations.archivedAt))),
+      db
+        .select({ locationId: users.locationId, value: count() })
+        .from(users)
+        .where(eq(users.role, "customer"))
+        .groupBy(users.locationId),
     ]);
 
   const stats = [
@@ -30,12 +46,38 @@ export default async function AdminDashboard() {
     { label: "Upcoming classes", value: upcoming.length },
   ];
 
+  const countByLocation = new Map(customersByLocation.map((c) => [c.locationId, c.value]));
+  const studioOptions = allLocations.map((l) => ({
+    id: l.id,
+    name: l.name,
+    customerCount: countByLocation.get(l.id) ?? 0,
+  }));
+
+  const banner =
+    searchParams.error && emailErrorMessages[searchParams.error]
+      ? { tone: "error" as const, text: emailErrorMessages[searchParams.error] }
+      : searchParams.email_sent
+      ? { tone: "ok" as const, text: `Email sent to ${searchParams.email_sent} customer${searchParams.email_sent === "1" ? "" : "s"}.` }
+      : null;
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-3xl font-600">Dashboard</h1>
         <p className="text-sm text-ink/50">Your studio at a glance.</p>
       </div>
+
+      {banner ? (
+        <div
+          className={
+            banner.tone === "error"
+              ? "rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+              : "rounded-2xl border border-magenta/20 bg-blush/40 p-4 text-sm text-magenta-deep"
+          }
+        >
+          {banner.text}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((s) => (
@@ -83,6 +125,11 @@ export default async function AdminDashboard() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="card p-6">
+        <h2 className="mb-4 font-600">Email customers</h2>
+        <AdminBulkEmailForm studios={studioOptions} totalCount={customerCount} />
       </div>
     </div>
   );

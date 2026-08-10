@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, classSessions, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
+import { sendBulkEmail } from "@/lib/email";
 
 /**
  * Books a customer into a class from the instructor portal — e.g. a walk-in
@@ -96,4 +97,43 @@ export async function updateInstructorProfile(formData: FormData) {
 
   revalidatePath("/instructor/profile");
   redirect("/instructor/profile?updated=1");
+}
+
+/**
+ * Sends from the instructor's own inbox (not the shared team@ address), so
+ * their studio's customers see it as coming personally from them. Scoped to
+ * only customers whose preferred studio matches one the instructor teaches
+ * at — matches the same scoping used everywhere else in the instructor
+ * portal.
+ */
+export async function sendInstructorBulkEmail(formData: FormData) {
+  const session = await requireInstructor();
+  const subject = String(formData.get("subject") || "").trim();
+  const body = String(formData.get("body") || "").trim();
+
+  if (!subject || !body) {
+    redirect("/instructor?error=email_invalid");
+  }
+
+  const [instructor, myLocations] = await Promise.all([
+    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
+    db.query.instructorLocations.findMany({ where: eq(instructorLocations.userId, session.userId) }),
+  ]);
+  const locationIds = myLocations.map((l) => l.locationId);
+  if (!instructor || locationIds.length === 0) {
+    redirect("/instructor?error=email_no_recipients");
+  }
+
+  const customers = await db.query.users.findMany({
+    where: and(eq(users.role, "customer"), inArray(users.locationId, locationIds)),
+    columns: { email: true },
+  });
+  const recipients = customers.map((c) => c.email);
+  if (recipients.length === 0) {
+    redirect("/instructor?error=email_no_recipients");
+  }
+
+  const { sent } = await sendBulkEmail(`${instructor.name} <${instructor.email}>`, recipients, subject, body);
+
+  redirect(`/instructor?email_sent=${sent}`);
 }
