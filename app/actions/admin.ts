@@ -9,6 +9,7 @@ import {
   classSessions,
   classTypes,
   instructorLocations,
+  instructorPayouts,
   locations,
   memberships,
   packages,
@@ -1076,4 +1077,27 @@ export async function rejectZellePayment(formData: FormData) {
     .where(and(eq(zellePayments.id, id), eq(zellePayments.status, "pending")));
   revalidatePath("/admin/zelle");
   revalidatePath("/portal/packages");
+}
+
+// ---------- Instructor pay ----------
+export async function markInstructorPayout(formData: FormData) {
+  await requireAdmin();
+  const instructorId = Number(formData.get("instructorId"));
+  const month = String(formData.get("month") || "");
+  const status = formData.get("status") === "paid" ? "paid" : "due";
+  const comments = String(formData.get("comments") || "").trim() || null;
+  if (!instructorId || !/^\d{4}-\d{2}$/.test(month)) {
+    redirect("/admin/instructor-pay");
+  }
+
+  await db
+    .insert(instructorPayouts)
+    .values({ instructorId, month, status, comments, paidAt: status === "paid" ? new Date() : null })
+    .onConflictDoUpdate({
+      target: [instructorPayouts.instructorId, instructorPayouts.month],
+      set: { status, comments, paidAt: status === "paid" ? new Date() : null },
+    });
+
+  revalidatePath("/admin/instructor-pay");
+  redirect(`/admin/instructor-pay?month=${month}&saved=1`);
 }

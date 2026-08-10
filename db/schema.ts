@@ -9,6 +9,7 @@ import {
   boolean,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -237,6 +238,25 @@ export const waiverSignatures = pgTable("waiver_signatures", {
   signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ---------- Instructor pay (paid/due tracking per instructor per month) ----------
+// The actual class list and $ owed are always computed live from
+// class_sessions.assignedInstructorId — this table only remembers whether
+// admin has marked a given instructor's month as paid.
+export const instructorPayouts = pgTable(
+  "instructor_payouts",
+  {
+    id: serial("id").primaryKey(),
+    instructorId: integer("instructor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    month: varchar("month", { length: 7 }).notNull(), // "yyyy-mm"
+    status: varchar("status", { length: 16 }).notNull().default("due"), // due | paid
+    comments: text("comments"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+  },
+  (t) => ({ uniq: uniqueIndex("instructor_payouts_instructor_month_idx").on(t.instructorId, t.month) })
+);
+
 // ---------- Relations ----------
 export const usersRelations = relations(users, ({ one, many }) => ({
   memberships: many(memberships),
@@ -244,7 +264,12 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   signatures: many(waiverSignatures),
   instructorLocations: many(instructorLocations),
   zellePayments: many(zellePayments),
+  payouts: many(instructorPayouts),
   location: one(locations, { fields: [users.locationId], references: [locations.id] }),
+}));
+
+export const instructorPayoutsRelations = relations(instructorPayouts, ({ one }) => ({
+  instructor: one(users, { fields: [instructorPayouts.instructorId], references: [users.id] }),
 }));
 
 export const zellePaymentsRelations = relations(zellePayments, ({ one }) => ({
