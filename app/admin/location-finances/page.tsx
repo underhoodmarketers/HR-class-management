@@ -114,7 +114,7 @@ export default async function LocationFinancesPage({
           <h1 className="font-display text-3xl font-600">Revenue &amp; expenses</h1>
           <p className="text-sm text-ink/50">By studio, by month.</p>
         </div>
-        <Link href="/admin/profile" className="text-sm text-magenta">← Profile</Link>
+        <Link href="/admin" className="text-sm text-magenta">← Dashboard</Link>
       </div>
 
       {banner ? (

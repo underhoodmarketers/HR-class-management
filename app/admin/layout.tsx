@@ -15,6 +15,7 @@ const nav = [
   { href: "/admin/leaderboard", label: "Leaderboard" },
   { href: "/admin/locations", label: "Studios & classes" },
   { href: "/admin/waiver", label: "Waiver" },
+  { href: "/admin/location-finances", label: "Finances", newTab: true },
   { href: "/admin/profile", label: "Profile" },
 ];
 
@@ -36,6 +37,7 @@ export default async function AdminLayout({
             <Link
               key={item.href}
               href={item.href}
+              target={item.newTab ? "_blank" : undefined}
               className="rounded-xl px-3 py-2 text-sm font-medium text-ink/70 hover:bg-blush hover:text-magenta-deep"
             >
               {item.label}
