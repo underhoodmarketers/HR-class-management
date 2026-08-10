@@ -28,6 +28,7 @@ export default function BuyButton({
   const [open, setOpen] = useState(Boolean(autoOpen));
   const [stage, setStage] = useState<"promo" | "checkout">("promo");
   const [error, setError] = useState<string | null>(null);
+  const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promoStatus, setPromoStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [checkingPromo, setCheckingPromo] = useState(false);
@@ -45,6 +46,7 @@ export default function BuyButton({
   const handleClick = () => {
     setError(null);
     setStage("promo");
+    setShowPromoInput(false);
     setPromoInput("");
     setPromoStatus(null);
     setAppliedCode(null);
@@ -100,32 +102,45 @@ export default function BuyButton({
             ) : stage === "promo" ? (
               <div className="space-y-4 p-2">
                 <div>
-                  <label className="label">Promo code (optional)</label>
-                  <div className="flex gap-2">
-                    <input
-                      value={promoInput}
-                      onChange={(e) => {
-                        setPromoInput(e.target.value);
-                        if (appliedCode) setAppliedCode(null);
-                        setPromoStatus(null);
-                      }}
-                      placeholder="Enter code"
-                      className="input flex-1"
-                    />
+                  {showPromoInput ? (
+                    <>
+                      <label className="label">Promo code</label>
+                      <div className="flex gap-2">
+                        <input
+                          value={promoInput}
+                          onChange={(e) => {
+                            setPromoInput(e.target.value);
+                            if (appliedCode) setAppliedCode(null);
+                            setPromoStatus(null);
+                          }}
+                          placeholder="Enter code"
+                          autoFocus
+                          className="input flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyPromo}
+                          disabled={checkingPromo || !promoInput.trim()}
+                          className="btn-subtle whitespace-nowrap px-4"
+                        >
+                          {checkingPromo ? "Checking…" : "Apply"}
+                        </button>
+                      </div>
+                      {promoStatus ? (
+                        <p className={`mt-2 text-sm ${promoStatus.tone === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+                          {promoStatus.text}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
                     <button
                       type="button"
-                      onClick={handleApplyPromo}
-                      disabled={checkingPromo || !promoInput.trim()}
-                      className="btn-subtle whitespace-nowrap px-4"
+                      onClick={() => setShowPromoInput(true)}
+                      className="text-sm font-semibold text-magenta hover:underline"
                     >
-                      {checkingPromo ? "Checking…" : "Apply"}
+                      Have a promo code?
                     </button>
-                  </div>
-                  {promoStatus ? (
-                    <p className={`mt-2 text-sm ${promoStatus.tone === "ok" ? "text-emerald-600" : "text-red-600"}`}>
-                      {promoStatus.text}
-                    </p>
-                  ) : null}
+                  )}
                 </div>
                 <button type="button" onClick={() => setStage("checkout")} className="btn-primary w-full">
                   Continue to payment
