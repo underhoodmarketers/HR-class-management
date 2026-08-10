@@ -6,7 +6,7 @@ import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from "@stripe/react-stripe-js";
-import { createEmbeddedCheckout, type BillingType } from "@/app/actions/checkout";
+import { createEmbeddedCheckout, validatePromoCode, type BillingType } from "@/app/actions/checkout";
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -26,20 +26,44 @@ export default function BuyButton({
   autoOpen?: boolean;
 }) {
   const [open, setOpen] = useState(Boolean(autoOpen));
+  const [stage, setStage] = useState<"promo" | "checkout">("promo");
   const [error, setError] = useState<string | null>(null);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoStatus, setPromoStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
 
   const fetchClientSecret = useCallback(async () => {
-    const result = await createEmbeddedCheckout(packageId, billingType);
+    const result = await createEmbeddedCheckout(packageId, billingType, appliedCode ?? undefined);
     if ("error" in result) {
       setError(result.error);
       throw new Error(result.error);
     }
     return result.clientSecret;
-  }, [packageId, billingType]);
+  }, [packageId, billingType, appliedCode]);
 
   const handleClick = () => {
     setError(null);
+    setStage("promo");
+    setPromoInput("");
+    setPromoStatus(null);
+    setAppliedCode(null);
     setOpen(true);
+  };
+
+  const handleApplyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setCheckingPromo(true);
+    setPromoStatus(null);
+    const result = await validatePromoCode(promoInput, packageId);
+    setCheckingPromo(false);
+    if (result.ok) {
+      setAppliedCode(promoInput.trim().toUpperCase());
+      setPromoStatus({ tone: "ok", text: `Applied — ${result.label}` });
+    } else {
+      setAppliedCode(null);
+      setPromoStatus({ tone: "error", text: result.error });
+    }
   };
 
   if (!stripePromise) {
@@ -73,6 +97,40 @@ export default function BuyButton({
               <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">
                 {error}
               </p>
+            ) : stage === "promo" ? (
+              <div className="space-y-4 p-2">
+                <div>
+                  <label className="label">Promo code (optional)</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={promoInput}
+                      onChange={(e) => {
+                        setPromoInput(e.target.value);
+                        if (appliedCode) setAppliedCode(null);
+                        setPromoStatus(null);
+                      }}
+                      placeholder="Enter code"
+                      className="input flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromo}
+                      disabled={checkingPromo || !promoInput.trim()}
+                      className="btn-subtle whitespace-nowrap px-4"
+                    >
+                      {checkingPromo ? "Checking…" : "Apply"}
+                    </button>
+                  </div>
+                  {promoStatus ? (
+                    <p className={`mt-2 text-sm ${promoStatus.tone === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+                      {promoStatus.text}
+                    </p>
+                  ) : null}
+                </div>
+                <button type="button" onClick={() => setStage("checkout")} className="btn-primary w-full">
+                  Continue to payment
+                </button>
+              </div>
             ) : (
               <EmbeddedCheckoutProvider
                 stripe={stripePromise}

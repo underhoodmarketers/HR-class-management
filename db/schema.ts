@@ -288,6 +288,59 @@ export const locationRevenueHistory = pgTable("location_revenue_history", {
   comment: text("comment"),
 });
 
+// ---------- Promo codes (restrictions layer on top of Stripe coupons) ----------
+// Stripe still owns the actual discount mechanics (coupon + promotion
+// code); this table tracks which one and lets checkout enforce
+// restrictions Stripe has no concept of (packages, customers, locations
+// are all app-specific). No rows in a given restriction table = that
+// dimension is unrestricted, same convention as package_locations.
+export const promoCodes = pgTable("promo_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  stripeCouponId: varchar("stripe_coupon_id", { length: 255 }).notNull(),
+  stripePromotionCodeId: varchar("stripe_promotion_code_id", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const promoCodePackages = pgTable(
+  "promo_code_packages",
+  {
+    promoCodeId: integer("promo_code_id")
+      .notNull()
+      .references(() => promoCodes.id, { onDelete: "cascade" }),
+    packageId: integer("package_id")
+      .notNull()
+      .references(() => packages.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.promoCodeId, t.packageId] }) })
+);
+
+export const promoCodeCustomers = pgTable(
+  "promo_code_customers",
+  {
+    promoCodeId: integer("promo_code_id")
+      .notNull()
+      .references(() => promoCodes.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.promoCodeId, t.userId] }) })
+);
+
+export const promoCodeLocations = pgTable(
+  "promo_code_locations",
+  {
+    promoCodeId: integer("promo_code_id")
+      .notNull()
+      .references(() => promoCodes.id, { onDelete: "cascade" }),
+    locationId: integer("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.promoCodeId, t.locationId] }) })
+);
+
 // ---------- Relations ----------
 export const usersRelations = relations(users, ({ one, many }) => ({
   memberships: many(memberships),
@@ -309,6 +362,27 @@ export const locationExpensesRelations = relations(locationExpenses, ({ one }) =
 
 export const locationRevenueHistoryRelations = relations(locationRevenueHistory, ({ one }) => ({
   location: one(locations, { fields: [locationRevenueHistory.locationId], references: [locations.id] }),
+}));
+
+export const promoCodesRelations = relations(promoCodes, ({ many }) => ({
+  packages: many(promoCodePackages),
+  customers: many(promoCodeCustomers),
+  locations: many(promoCodeLocations),
+}));
+
+export const promoCodePackagesRelations = relations(promoCodePackages, ({ one }) => ({
+  promoCode: one(promoCodes, { fields: [promoCodePackages.promoCodeId], references: [promoCodes.id] }),
+  package: one(packages, { fields: [promoCodePackages.packageId], references: [packages.id] }),
+}));
+
+export const promoCodeCustomersRelations = relations(promoCodeCustomers, ({ one }) => ({
+  promoCode: one(promoCodes, { fields: [promoCodeCustomers.promoCodeId], references: [promoCodes.id] }),
+  user: one(users, { fields: [promoCodeCustomers.userId], references: [users.id] }),
+}));
+
+export const promoCodeLocationsRelations = relations(promoCodeLocations, ({ one }) => ({
+  promoCode: one(promoCodes, { fields: [promoCodeLocations.promoCodeId], references: [promoCodes.id] }),
+  location: one(locations, { fields: [promoCodeLocations.locationId], references: [locations.id] }),
 }));
 
 export const zellePaymentsRelations = relations(zellePayments, ({ one }) => ({

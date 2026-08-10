@@ -2,8 +2,17 @@
 
 import { useState } from "react";
 import { createPromoCode } from "@/app/actions/admin";
+import CustomerMultiSelect from "./CustomerMultiSelect";
 
-export default function PromoCodeForm() {
+export default function PromoCodeForm({
+  packages,
+  locations,
+  customers,
+}: {
+  packages: { id: number; name: string }[];
+  locations: { id: number; name: string }[];
+  customers: { id: number; name: string; email: string }[];
+}) {
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [duration, setDuration] = useState<"once" | "forever" | "repeating">("once");
 
@@ -130,6 +139,57 @@ export default function PromoCodeForm() {
         <div>
           <label className="label">Max uses (optional)</label>
           <input type="number" name="maxRedemptions" min={1} className="input" placeholder="Unlimited" />
+        </div>
+      </div>
+
+      <div className="border-t border-ink/10 pt-4">
+        <p className="mb-1 text-sm font-600">Restrictions</p>
+        <p className="mb-3 text-xs text-ink/40">
+          Leave any of these blank to not restrict by that — e.g. no packages checked means the code
+          works on every package. All restrictions you do set must match for the code to work.
+        </p>
+
+        <div className="mb-4">
+          <label className="label">Packages (optional)</label>
+          <div className="max-h-32 overflow-y-auto rounded-xl border border-ink/10">
+            {packages.length === 0 ? (
+              <p className="p-3 text-sm text-ink/40">No packages yet.</p>
+            ) : (
+              packages.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center gap-2 border-b border-ink/5 px-3 py-2 text-sm last:border-b-0 hover:bg-blush/20"
+                >
+                  <input type="checkbox" name="packageIds" value={p.id} />
+                  <span>{p.name}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="label">Studios (optional)</label>
+          <div className="rounded-xl border border-ink/10">
+            {locations.length === 0 ? (
+              <p className="p-3 text-sm text-ink/40">No studios yet.</p>
+            ) : (
+              locations.map((l) => (
+                <label
+                  key={l.id}
+                  className="flex cursor-pointer items-center gap-2 border-b border-ink/5 px-3 py-2 text-sm last:border-b-0 hover:bg-blush/20"
+                >
+                  <input type="checkbox" name="locationIds" value={l.id} />
+                  <span>{l.name}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Customers (optional)</label>
+          <CustomerMultiSelect customers={customers} />
         </div>
       </div>
 

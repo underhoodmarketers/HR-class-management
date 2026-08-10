@@ -15,6 +15,10 @@ import {
   memberships,
   packages,
   packageLocations,
+  promoCodes,
+  promoCodePackages,
+  promoCodeCustomers,
+  promoCodeLocations,
   users,
   waiverSignatures,
   waiverTemplate,
@@ -588,6 +592,12 @@ export async function createPromoCode(formData: FormData) {
     redirect("/admin/promo-codes?error=invalid");
   }
 
+  const packageIds = formData.getAll("packageIds").map(Number).filter((n) => !isNaN(n));
+  const customerIds = formData.getAll("customerIds").map(Number).filter((n) => !isNaN(n));
+  const locationIds = formData.getAll("locationIds").map(Number).filter((n) => !isNaN(n));
+
+  let couponId: string;
+  let promotionCodeId: string;
   try {
     const coupon = await stripe.coupons.create({
       ...(discountType === "percent"
@@ -597,8 +607,9 @@ export async function createPromoCode(formData: FormData) {
       ...(duration === "repeating" ? { duration_in_months: durationMonths } : {}),
       name: code,
     });
+    couponId = coupon.id;
 
-    await stripe.promotionCodes.create({
+    const promotionCode = await stripe.promotionCodes.create({
       coupon: coupon.id,
       code,
       active: true,
@@ -607,9 +618,25 @@ export async function createPromoCode(formData: FormData) {
         : {}),
       ...(maxRedemptions > 0 ? { max_redemptions: maxRedemptions } : {}),
     });
+    promotionCodeId = promotionCode.id;
   } catch {
     // Most common cause: that code already exists on another active promotion.
     redirect("/admin/promo-codes?error=duplicate");
+  }
+
+  const [promoCode] = await db
+    .insert(promoCodes)
+    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId })
+    .returning();
+
+  if (packageIds.length > 0) {
+    await db.insert(promoCodePackages).values(packageIds.map((packageId) => ({ promoCodeId: promoCode.id, packageId })));
+  }
+  if (customerIds.length > 0) {
+    await db.insert(promoCodeCustomers).values(customerIds.map((userId) => ({ promoCodeId: promoCode.id, userId })));
+  }
+  if (locationIds.length > 0) {
+    await db.insert(promoCodeLocations).values(locationIds.map((locationId) => ({ promoCodeId: promoCode.id, locationId })));
   }
 
   revalidatePath("/admin/promo-codes");

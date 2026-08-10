@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { locations, packages, users } from "@/db/schema";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { togglePromoCode } from "@/app/actions/admin";
 import { formatMoney } from "@/lib/utils";
@@ -44,14 +47,38 @@ export default async function PromoCodesPage({
       ? { tone: "ok" as const, text: "Promo code created." }
       : null;
 
-  const codes = stripeConfigured()
-    ? (
-        await stripe.promotionCodes.list({
-          limit: 100,
-          expand: ["data.coupon"],
-        })
-      ).data
-    : [];
+  const [codes, allPackages, allLocations, allCustomers, ourPromoCodes] = await Promise.all([
+    stripeConfigured()
+      ? stripe.promotionCodes
+          .list({ limit: 100, expand: ["data.coupon"] })
+          .then((r) => r.data)
+      : Promise.resolve([]),
+    db.select().from(packages),
+    db.select().from(locations),
+    db.query.users.findMany({
+      where: eq(users.role, "customer"),
+      columns: { id: true, name: true, email: true },
+      orderBy: (u, { asc }) => [asc(u.name)],
+    }),
+    db.query.promoCodes.findMany({
+      with: {
+        packages: { with: { package: true } },
+        customers: { with: { user: true } },
+        locations: { with: { location: true } },
+      },
+    }),
+  ]);
+
+  const restrictionsByPromotionCodeId = new Map(
+    ourPromoCodes.map((p) => [
+      p.stripePromotionCodeId,
+      {
+        packages: p.packages.map((x) => x.package.name),
+        locations: p.locations.map((x) => x.location.name),
+        customers: p.customers.map((x) => x.user.name),
+      },
+    ])
+  );
 
   return (
     <div className="space-y-8">
@@ -82,7 +109,11 @@ export default async function PromoCodesPage({
         <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
           <div className="card h-fit p-6">
             <h2 className="mb-4 font-600">New promo code</h2>
-            <PromoCodeForm />
+            <PromoCodeForm
+              packages={allPackages.map((p) => ({ id: p.id, name: p.name }))}
+              locations={allLocations.map((l) => ({ id: l.id, name: l.name }))}
+              customers={allCustomers}
+            />
           </div>
 
           <div className="space-y-3">
@@ -91,6 +122,12 @@ export default async function PromoCodesPage({
             ) : (
               codes.map((c) => {
                 const coupon = typeof c.coupon === "object" ? c.coupon : null;
+                const restrictions = restrictionsByPromotionCodeId.get(c.id);
+                const restrictionParts = [
+                  restrictions?.packages.length ? `Packages: ${restrictions.packages.join(", ")}` : null,
+                  restrictions?.locations.length ? `Studios: ${restrictions.locations.join(", ")}` : null,
+                  restrictions?.customers.length ? `Customers: ${restrictions.customers.join(", ")}` : null,
+                ].filter(Boolean);
                 return (
                   <div key={c.id} className="card flex items-center justify-between p-5">
                     <div>
@@ -114,6 +151,9 @@ export default async function PromoCodesPage({
                             })}`
                           : ""}
                       </p>
+                      {restrictionParts.length > 0 ? (
+                        <p className="mt-1 text-xs text-magenta-deep">{restrictionParts.join(" · ")}</p>
+                      ) : null}
                     </div>
                     <form action={togglePromoCode}>
                       <input type="hidden" name="id" value={c.id} />

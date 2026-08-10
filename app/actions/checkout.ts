@@ -2,12 +2,30 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { packages } from "@/db/schema";
+import { packages, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { stripeFeeCents } from "@/lib/utils";
+import { resolvePromoCode } from "@/lib/promoCodes";
 
 export type BillingType = "one_time" | "recurring";
+
+export async function validatePromoCode(
+  code: string,
+  packageId: number
+): Promise<{ ok: true; label: string } | { ok: false; error: string }> {
+  const session = await requireUser();
+  const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+  if (!user) return { ok: false, error: "That code isn't valid." };
+
+  const result = await resolvePromoCode(code, {
+    userId: user.id,
+    packageId,
+    locationId: user.locationId,
+  });
+  if (!result.ok) return result;
+  return { ok: true, label: result.label };
+}
 
 /**
  * Creates a Stripe Checkout Session in embedded mode and returns its
@@ -16,7 +34,8 @@ export type BillingType = "one_time" | "recurring";
  */
 export async function createEmbeddedCheckout(
   packageId: number,
-  billingType: BillingType
+  billingType: BillingType,
+  promoCode?: string
 ): Promise<{ clientSecret: string } | { error: string }> {
   const session = await requireUser();
 
@@ -31,6 +50,18 @@ export async function createEmbeddedCheckout(
 
   if (!stripeConfigured()) {
     return { error: "Payments aren't set up yet. Please contact the studio." };
+  }
+
+  let discounts: { promotion_code: string }[] | undefined;
+  if (promoCode) {
+    const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+    const result = await resolvePromoCode(promoCode, {
+      userId: session.userId,
+      packageId,
+      locationId: user?.locationId ?? null,
+    });
+    if (!result.ok) return { error: result.error };
+    discounts = [{ promotion_code: result.stripePromotionCodeId }];
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
@@ -71,7 +102,7 @@ export async function createEmbeddedCheckout(
           ],
           subscription_data: { metadata },
           metadata,
-          allow_promotion_codes: true,
+          ...(discounts ? { discounts } : {}),
           redirect_on_completion: "if_required",
           return_url: `${baseUrl}/portal?purchase=success`,
         }
@@ -101,7 +132,7 @@ export async function createEmbeddedCheckout(
             },
           ],
           metadata,
-          allow_promotion_codes: true,
+          ...(discounts ? { discounts } : {}),
           redirect_on_completion: "if_required",
           return_url: `${baseUrl}/portal?purchase=success`,
         }
