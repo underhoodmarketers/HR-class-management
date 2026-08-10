@@ -132,11 +132,10 @@ export default async function LocationFinancesPage({
         });
       }
 
-      // Drop $0 rows (trials, comps) and third-party marketplace signups
-      // (ClassPass/Wellhub) — not real studio revenue for this ledger.
-      const cleaned = ledger.filter(
-        (row) => row.amountCents !== 0 && !/classpass|wellhub/i.test(row.description)
-      );
+      // Drop $0 rows (trials, comps, unpaid marketplace signups) — not real
+      // studio revenue for this ledger. Actual ClassPass/Wellhub earnings
+      // (non-zero, imported separately from their payout reports) still show.
+      const cleaned = ledger.filter((row) => row.amountCents !== 0);
       cleaned.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const totalRevenueCents = cleaned.filter((r) => r.type === "Revenue").reduce((sum, r) => sum + r.amountCents, 0);
