@@ -5,8 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export default function CustomersFilterBar({
   studios,
+  showWaiver = true,
 }: {
-  studios: { id: number; name: string }[];
+  studios?: { id: number; name: string }[];
+  showWaiver?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -39,19 +41,21 @@ export default function CustomersFilterBar({
         placeholder="Search name, email, or phone…"
         className="input min-w-[220px] flex-1"
       />
-      <select
-        value={searchParams.get("studio") ?? ""}
-        onChange={(e) => updateParam("studio", e.target.value)}
-        className="input w-auto"
-      >
-        <option value="">All studios</option>
-        <option value="none">No studio</option>
-        {studios.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
+      {studios ? (
+        <select
+          value={searchParams.get("studio") ?? ""}
+          onChange={(e) => updateParam("studio", e.target.value)}
+          className="input w-auto"
+        >
+          <option value="">All studios</option>
+          <option value="none">No studio</option>
+          {studios.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <select
         value={searchParams.get("membership") ?? ""}
         onChange={(e) => updateParam("membership", e.target.value)}
@@ -61,15 +65,17 @@ export default function CustomersFilterBar({
         <option value="active">Active membership</option>
         <option value="none">No active membership</option>
       </select>
-      <select
-        value={searchParams.get("waiver") ?? ""}
-        onChange={(e) => updateParam("waiver", e.target.value)}
-        className="input w-auto"
-      >
-        <option value="">Any waiver status</option>
-        <option value="signed">Signed</option>
-        <option value="missing">Missing</option>
-      </select>
+      {showWaiver ? (
+        <select
+          value={searchParams.get("waiver") ?? ""}
+          onChange={(e) => updateParam("waiver", e.target.value)}
+          className="input w-auto"
+        >
+          <option value="">Any waiver status</option>
+          <option value="signed">Signed</option>
+          <option value="missing">Missing</option>
+        </select>
+      ) : null}
       {searchParams.toString() ? (
         <button
           type="button"
