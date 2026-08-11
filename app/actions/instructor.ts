@@ -115,12 +115,18 @@ export async function updateInstructorProfile(formData: FormData) {
  * their studio's customers see it as coming personally from them. Scoped to
  * only customers whose preferred studio matches one the instructor teaches
  * at — matches the same scoping used everywhere else in the instructor
- * portal.
+ * portal. An optional customerIds selection narrows further to specific
+ * people (still intersected with the studio scope server-side, regardless
+ * of what the picker UI already filters to).
  */
 export async function sendInstructorBulkEmail(formData: FormData) {
   const session = await requireInstructor();
   const subject = String(formData.get("subject") || "").trim();
   const body = String(formData.get("body") || "").trim();
+  const selectedIds = formData
+    .getAll("customerIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
 
   if (!subject || !body) {
     redirect("/instructor?error=email_invalid");
@@ -144,7 +150,8 @@ export async function sendInstructorBulkEmail(formData: FormData) {
           .select({ userId: userLocations.userId })
           .from(userLocations)
           .where(inArray(userLocations.locationId, locationIds))
-      )
+      ),
+      selectedIds.length > 0 ? inArray(users.id, selectedIds) : undefined
     ),
     columns: { email: true },
   });

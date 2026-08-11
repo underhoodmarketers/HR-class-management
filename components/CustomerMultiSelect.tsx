@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function CustomerMultiSelect({
   customers,
+  onSelectionChange,
 }: {
   customers: { id: number; name: string; email: string }[];
+  onSelectionChange?: (count: number) => void;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    onSelectionChange?.(selected.size);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   const q = query.trim().toLowerCase();
   const filtered = q

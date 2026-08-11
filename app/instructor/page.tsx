@@ -223,7 +223,9 @@ export default async function InstructorDashboardPage({
 
           <div className="card p-6">
             <h2 className="mb-4 font-600">Email your customers</h2>
-            <InstructorBulkEmailForm recipientCount={scoped.length} />
+            <InstructorBulkEmailForm
+              customers={scoped.map((c) => ({ id: c.id, name: c.name, email: c.email }))}
+            />
           </div>
         </>
       )}
