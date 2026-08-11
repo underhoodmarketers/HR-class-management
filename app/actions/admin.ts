@@ -400,6 +400,51 @@ export async function adminBookClass(formData: FormData) {
   revalidatePath(`/admin/customers/${userId}`);
 }
 
+/**
+ * Cancels a single customer's booking (not the whole class) and refunds
+ * their credit to wherever it was drawn from — mirrors the customer's own
+ * self-cancel in app/actions/booking.ts, minus the ownership check.
+ */
+export async function adminCancelBooking(formData: FormData) {
+  await requireAdmin();
+  const bookingId = Number(formData.get("bookingId"));
+  if (!bookingId) return;
+
+  const booking = await db.query.bookings.findFirst({
+    where: eq(bookings.id, bookingId),
+  });
+  if (!booking || booking.status !== "booked") return;
+
+  await db.update(bookings).set({ status: "canceled" }).where(eq(bookings.id, bookingId));
+
+  if (booking.fromMakeupCredit) {
+    await db
+      .update(users)
+      .set({ makeupCredits: sql`${users.makeupCredits} + 1` })
+      .where(eq(users.id, booking.userId));
+  } else if (booking.fromOwedCredit) {
+    await db
+      .update(users)
+      .set({ creditsOwed: sql`GREATEST(0, ${users.creditsOwed} - 1)` })
+      .where(eq(users.id, booking.userId));
+  } else if (booking.membershipId) {
+    await db
+      .update(memberships)
+      .set({ creditsRemaining: sql`${memberships.creditsRemaining} + 1` })
+      .where(
+        and(
+          eq(memberships.id, booking.membershipId),
+          sql`${memberships.creditsRemaining} IS NOT NULL`
+        )
+      );
+  }
+
+  revalidatePath("/admin/calendar");
+  revalidatePath(`/admin/calendar/session/${booking.sessionId}`);
+  revalidatePath("/admin");
+  revalidatePath(`/admin/customers/${booking.userId}`);
+}
+
 export async function cancelSession(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("id"));

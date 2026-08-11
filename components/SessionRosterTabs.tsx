@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { adminCancelBooking } from "@/app/actions/admin";
 
 type RosterEntry = {
   bookingId: number;
@@ -87,17 +88,37 @@ export default function SessionRosterTabs({
                   {formatSignedUpAt(r.signedUpAt)}
                 </span>
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-ink/40">{r.contact}</span>
-                {r.packageName ? (
-                  <span className="rounded-full bg-blush px-2 py-0.5 text-[11px] text-magenta-deep">
-                    {r.packageName}
-                  </span>
-                ) : null}
-                {r.owesCredit ? (
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
-                    Owes 1 credit
-                  </span>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-ink/40">{r.contact}</span>
+                  {r.packageName ? (
+                    <span className="rounded-full bg-blush px-2 py-0.5 text-[11px] text-magenta-deep">
+                      {r.packageName}
+                    </span>
+                  ) : null}
+                  {r.owesCredit ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
+                      Owes 1 credit
+                    </span>
+                  ) : null}
+                </div>
+                {tab === "signups" ? (
+                  <form
+                    action={adminCancelBooking}
+                    onSubmit={(e) => {
+                      if (
+                        !confirm(
+                          `Cancel ${r.name}'s booking for this class?\n\nTheir credit will be refunded.`
+                        )
+                      )
+                        e.preventDefault();
+                    }}
+                  >
+                    <input type="hidden" name="bookingId" value={r.bookingId} />
+                    <button className="text-xs text-red-600 hover:underline">
+                      Cancel booking
+                    </button>
+                  </form>
                 ) : null}
               </div>
             </li>
