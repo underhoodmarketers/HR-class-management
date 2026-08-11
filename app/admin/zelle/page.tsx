@@ -140,20 +140,30 @@ export default async function ZellePage({
               <h2 className="mb-3 font-600">Recent history</h2>
               <ul className="card divide-y divide-ink/5">
                 {history.map((z) => (
-                  <li key={z.id} className="flex items-center justify-between p-4 text-sm">
+                  <li key={z.id} className="flex items-center justify-between gap-3 p-4 text-sm">
                     <div>
                       <span className="font-medium">{z.user.name}</span>
                       <span className="text-ink/50"> · {z.package.name} · {formatMoney(z.amountCents)}</span>
                     </div>
-                    <span
-                      className={
-                        z.status === "approved"
-                          ? "badge bg-emerald-100 text-emerald-700"
-                          : "badge bg-ink/10 text-ink/50"
-                      }
-                    >
-                      {z.status}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span
+                        className={
+                          z.status === "approved"
+                            ? "badge bg-emerald-100 text-emerald-700"
+                            : "badge bg-ink/10 text-ink/50"
+                        }
+                      >
+                        {z.status}
+                      </span>
+                      {z.status === "rejected" ? (
+                        <form action={approveZellePayment}>
+                          <input type="hidden" name="id" value={z.id} />
+                          <button className="rounded-full px-3 py-1 text-xs font-semibold text-magenta hover:bg-blush">
+                            Approve anyway
+                          </button>
+                        </form>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>

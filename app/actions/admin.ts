@@ -1138,7 +1138,9 @@ export async function approveZellePayment(formData: FormData) {
     where: eq(zellePayments.id, id),
     with: { package: true, user: true },
   });
-  if (!request || request.status !== "pending") return;
+  // Allow approving from "pending" or "rejected" (recovering from an
+  // accidental reject) — just never re-grant on an already-approved one.
+  if (!request || request.status === "approved") return;
 
   const startsAt = new Date();
   // durationDays counts the start day itself as day 1.
