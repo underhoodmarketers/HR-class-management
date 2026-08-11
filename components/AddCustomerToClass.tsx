@@ -32,24 +32,7 @@ export default function AddCustomerToClass({
     : customers;
 
   return (
-    <form
-      action={adminBookClass}
-      className="space-y-2"
-      onSubmit={(e) => {
-        const select = e.currentTarget.elements.namedItem(
-          "userId"
-        ) as HTMLSelectElement | null;
-        const warn = select?.selectedOptions[0]?.dataset.warn === "1";
-        if (
-          warn &&
-          !confirm(
-            "This customer doesn't have an active package or remaining credits.\n\nBook them anyway? A class will be added to what they owe, and automatically subtracted from their next package purchase."
-          )
-        ) {
-          e.preventDefault();
-        }
-      }}
-    >
+    <form action={adminBookClass} className="space-y-2">
       <input type="hidden" name="sessionId" value={sessionId} />
       <input
         value={query}
@@ -68,12 +51,15 @@ export default function AddCustomerToClass({
           Select a customer…
         </option>
         {filtered.map((c) => (
-          <option key={c.id} value={c.id} data-warn={c.hasCredits ? "0" : "1"}>
+          <option key={c.id} value={c.id} disabled={!c.hasCredits}>
             {c.name}
-            {c.hasCredits ? "" : " — no credits"}
+            {c.hasCredits ? "" : " — no credits, can't book"}
           </option>
         ))}
       </select>
+      <p className="text-xs text-ink/40">
+        Customers with no package or no remaining credits can&apos;t be booked.
+      </p>
       <SubmitButton className="w-full py-2 text-sm">Add to class</SubmitButton>
     </form>
   );

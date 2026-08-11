@@ -353,41 +353,32 @@ export async function adminBookClass(formData: FormData) {
   const bookedCount = classSession.bookings.filter((b) => b.status === "booked").length;
   if (bookedCount >= classSession.capacity) return;
 
+  // No package, or no credits left on it, means this customer can't be
+  // booked at all — admins can't put a class on someone's tab anymore.
   const active = await getActiveMembership(userId);
-  const membershipId = active?.membership.id ?? null;
+  if (!active) return;
 
-  // If the active membership's own credits are exhausted, borrow from the
-  // makeup pool. No active membership, or an exhausted one with no makeup
-  // credits either, means this class goes on the customer's tab — it gets
-  // repaid out of their next real package purchase.
+  const membershipId = active.membership.id;
   let fromMakeupCredit = false;
-  let fromOwedCredit = false;
-  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
+  if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { makeupCredits: true },
     });
     fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
-    fromOwedCredit = !fromMakeupCredit;
-  } else if (!active) {
-    fromOwedCredit = true;
+    if (!fromMakeupCredit) return;
   }
 
   await db
     .insert(bookings)
-    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit, fromOwedCredit });
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
 
   if (fromMakeupCredit) {
     await db
       .update(users)
       .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
       .where(eq(users.id, userId));
-  } else if (fromOwedCredit) {
-    await db
-      .update(users)
-      .set({ creditsOwed: sql`${users.creditsOwed} + 1` })
-      .where(eq(users.id, userId));
-  } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
+  } else if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db
       .update(memberships)
       .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
