@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { and, eq, gte, gt, lt, inArray, or, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, gt, lt, inArray, or, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, instructorLocations, users } from "@/db/schema";
+import { classSessions, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import {
   formatDay,
@@ -15,30 +15,11 @@ import {
   monthLabel,
 } from "@/lib/utils";
 import InstructorBookForm from "@/components/InstructorBookForm";
+import InstructorRoster from "@/components/InstructorRoster";
 
 export const dynamic = "force-dynamic";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function Roster({
-  roster,
-}: {
-  roster: { id: number; name: string; contact: string }[];
-}) {
-  if (roster.length === 0) {
-    return <p className="mt-3 border-t border-ink/5 pt-2 text-xs text-ink/40">Nobody booked yet.</p>;
-  }
-  return (
-    <ul className="mt-3 divide-y divide-ink/5 border-t border-ink/5 pt-2 text-sm">
-      {roster.map((r) => (
-        <li key={r.id} className="flex items-center justify-between py-1.5">
-          <span>{r.name}</span>
-          <span className="text-xs text-ink/40">{r.contact}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export default async function InstructorSchedulePage({
   searchParams,
@@ -83,7 +64,7 @@ export default async function InstructorSchedulePage({
     eq(classSessions.assignedInstructorId, session.userId)
   );
 
-  const [upNext, gridSessions, agendaSessions, customers] = await Promise.all([
+  const [upNext, gridSessions, agendaSessions, customers, activeMembershipRows] = await Promise.all([
     db.query.classSessions.findFirst({
       where: and(
         inArray(classSessions.locationId, locationFilter),
@@ -119,10 +100,32 @@ export default async function InstructorSchedulePage({
       with: { locations: true },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
+    db.query.memberships.findMany({
+      where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
+      columns: { userId: true, creditsRemaining: true },
+      orderBy: [desc(memberships.endsAt)],
+    }),
   ]);
 
   const myLocationIdSet = new Set(myLocationIds);
   const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
+
+  // Latest-ending active membership per customer — mirrors getActiveMembership.
+  const activeByUser = new Map<number, { creditsRemaining: number | null }>();
+  for (const m of activeMembershipRows) {
+    if (!activeByUser.has(m.userId)) {
+      activeByUser.set(m.userId, { creditsRemaining: m.creditsRemaining });
+    }
+  }
+  const hasCreditsByUser = new Map<number, boolean>(
+    customers.map((c) => {
+      const active = activeByUser.get(c.id);
+      const hasCredits = active
+        ? active.creditsRemaining === null || active.creditsRemaining > 0 || c.makeupCredits > 0
+        : false;
+      return [c.id, hasCredits];
+    })
+  );
 
   const byDay = new Map<string, typeof gridSessions>();
   for (const s of gridSessions) {
@@ -170,7 +173,7 @@ export default async function InstructorSchedulePage({
                     {upNext.capacity} booked
                   </span>
                 </div>
-                <Roster
+                <InstructorRoster
                   roster={upNext.bookings
                     .filter((b) => b.status === "booked")
                     .map((b) => ({
@@ -192,7 +195,11 @@ export default async function InstructorSchedulePage({
                           (b) => b.userId === c.id && b.status === "booked"
                         )
                     )
-                    .map((c) => ({ id: c.id, name: c.name }))}
+                    .map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      hasCredits: hasCreditsByUser.get(c.id) ?? false,
+                    }))}
                 />
               </div>
             ) : (
@@ -325,7 +332,7 @@ export default async function InstructorSchedulePage({
                       {s.bookings.filter((b) => b.status === "booked").length}/{s.capacity} booked
                     </span>
                   </div>
-                  <Roster
+                  <InstructorRoster
                     roster={s.bookings
                       .filter((b) => b.status === "booked")
                       .map((b) => ({
@@ -347,7 +354,11 @@ export default async function InstructorSchedulePage({
                               (b) => b.userId === c.id && b.status === "booked"
                             )
                         )
-                        .map((c) => ({ id: c.id, name: c.name }))}
+                        .map((c) => ({
+                          id: c.id,
+                          name: c.name,
+                          hasCredits: hasCreditsByUser.get(c.id) ?? false,
+                        }))}
                     />
                   ) : null}
                 </div>

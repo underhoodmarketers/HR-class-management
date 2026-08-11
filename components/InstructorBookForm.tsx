@@ -9,7 +9,7 @@ export default function InstructorBookForm({
   full,
 }: {
   sessionId: number;
-  bookableCustomers: { id: number; name: string }[];
+  bookableCustomers: { id: number; name: string; hasCredits: boolean }[];
   full: boolean;
 }) {
   if (full) {
@@ -18,22 +18,25 @@ export default function InstructorBookForm({
   if (bookableCustomers.length === 0) return null;
 
   return (
-    <form
-      action={instructorBookClass}
-      className="mt-3 flex gap-2 border-t border-ink/5 pt-3"
-    >
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <select name="userId" className="input" required defaultValue="">
-        <option value="" disabled>
-          Book a customer…
-        </option>
-        {bookableCustomers.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
+    <div className="mt-3 border-t border-ink/5 pt-3">
+      <form action={instructorBookClass} className="flex gap-2">
+        <input type="hidden" name="sessionId" value={sessionId} />
+        <select name="userId" className="input" required defaultValue="">
+          <option value="" disabled>
+            Book a customer…
           </option>
-        ))}
-      </select>
-      <SubmitButton className="px-4 text-sm">Book</SubmitButton>
-    </form>
+          {bookableCustomers.map((c) => (
+            <option key={c.id} value={c.id} disabled={!c.hasCredits}>
+              {c.name}
+              {c.hasCredits ? "" : " — no credits, can't book"}
+            </option>
+          ))}
+        </select>
+        <SubmitButton className="px-4 text-sm">Book</SubmitButton>
+      </form>
+      <p className="mt-1.5 text-xs text-ink/40">
+        Customers with no package or no remaining credits can&apos;t be booked.
+      </p>
+    </div>
   );
 }

@@ -14,8 +14,8 @@ import { sendBulkEmail, sendSingleEmail } from "@/lib/email";
  * during class. Only allowed for classes the instructor can actually see:
  * their assigned studio(s), and — if the class has a specific instructor
  * assigned — only that instructor. Otherwise mirrors adminBookClass: doesn't
- * require the customer's package to cover this studio, and if they have no
- * package or no remaining credits, it goes on their tab (creditsOwed).
+ * require the customer's package to cover this studio, and a customer with
+ * no package or no remaining credits can't be booked at all.
  */
 export async function instructorBookClass(formData: FormData) {
   const session = await requireInstructor();
@@ -49,45 +49,94 @@ export async function instructorBookClass(formData: FormData) {
   const bookedCount = classSession.bookings.filter((b) => b.status === "booked").length;
   if (bookedCount >= classSession.capacity) return;
 
+  // No package, or no credits left on it, means this customer can't be
+  // booked at all.
   const active = await getActiveMembership(userId);
-  const membershipId = active?.membership.id ?? null;
+  if (!active) return;
 
-  // If the active membership's own credits are exhausted, borrow from the
-  // makeup pool. No active membership, or an exhausted one with no makeup
-  // credits either, goes on the customer's tab (repaid on their next
-  // real purchase — see applyOwedCredits).
+  const membershipId = active.membership.id;
   let fromMakeupCredit = false;
-  let fromOwedCredit = false;
-  if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
+  if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { makeupCredits: true },
     });
     fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
-    fromOwedCredit = !fromMakeupCredit;
-  } else if (!active) {
-    fromOwedCredit = true;
+    if (!fromMakeupCredit) return;
   }
 
   await db
     .insert(bookings)
-    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit, fromOwedCredit });
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
 
   if (fromMakeupCredit) {
     await db
       .update(users)
       .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
       .where(eq(users.id, userId));
-  } else if (fromOwedCredit) {
-    await db
-      .update(users)
-      .set({ creditsOwed: sql`${users.creditsOwed} + 1` })
-      .where(eq(users.id, userId));
-  } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
+  } else if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db
       .update(memberships)
       .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
       .where(eq(memberships.id, active.membership.id));
+  }
+
+  revalidatePath("/instructor/schedule");
+  revalidatePath("/instructor");
+}
+
+/**
+ * Cancels a single customer's booking (not the whole class) from the
+ * instructor portal and refunds their credit to wherever it was drawn
+ * from — mirrors adminCancelBooking, scoped to classes the instructor can
+ * actually see (their studio(s), and the assigned instructor if the class
+ * has one).
+ */
+export async function instructorCancelBooking(formData: FormData) {
+  const session = await requireInstructor();
+  const bookingId = Number(formData.get("bookingId"));
+  if (!bookingId) return;
+
+  const booking = await db.query.bookings.findFirst({
+    where: eq(bookings.id, bookingId),
+    with: { session: true },
+  });
+  if (!booking || booking.status !== "booked") return;
+
+  const myLocations = await db.query.instructorLocations.findMany({
+    where: eq(instructorLocations.userId, session.userId),
+  });
+  const myLocationIds = new Set(myLocations.map((l) => l.locationId));
+  if (!myLocationIds.has(booking.session.locationId)) return;
+  if (
+    booking.session.assignedInstructorId &&
+    booking.session.assignedInstructorId !== session.userId
+  ) {
+    return;
+  }
+
+  await db.update(bookings).set({ status: "canceled" }).where(eq(bookings.id, bookingId));
+
+  if (booking.fromMakeupCredit) {
+    await db
+      .update(users)
+      .set({ makeupCredits: sql`${users.makeupCredits} + 1` })
+      .where(eq(users.id, booking.userId));
+  } else if (booking.fromOwedCredit) {
+    await db
+      .update(users)
+      .set({ creditsOwed: sql`GREATEST(0, ${users.creditsOwed} - 1)` })
+      .where(eq(users.id, booking.userId));
+  } else if (booking.membershipId) {
+    await db
+      .update(memberships)
+      .set({ creditsRemaining: sql`${memberships.creditsRemaining} + 1` })
+      .where(
+        and(
+          eq(memberships.id, booking.membershipId),
+          sql`${memberships.creditsRemaining} IS NOT NULL`
+        )
+      );
   }
 
   revalidatePath("/instructor/schedule");
