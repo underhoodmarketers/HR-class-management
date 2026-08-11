@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { bookings, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
-import { getCurrentMonthLeaderboard, getLastMonthWinners } from "@/lib/leaderboard";
+import { getCurrentMonthLeaderboard, getLastMonthChampion } from "@/lib/leaderboard";
 import { formatDay, formatTime, isBirthdayToday } from "@/lib/utils";
 import Leaderboard from "@/components/Leaderboard";
 
@@ -19,21 +19,11 @@ export default async function PortalHome({
 
   const [active, profile, current, lastMonth] = await Promise.all([
     getActiveMembership(session.userId),
-    db.query.users.findFirst({
-      where: eq(users.id, session.userId),
-      with: { locations: true },
-    }),
+    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
     getCurrentMonthLeaderboard(),
-    getLastMonthWinners(),
+    getLastMonthChampion(),
   ]);
   const now = new Date();
-
-  const myLocationIds = new Set((profile?.locations ?? []).map((l) => l.locationId));
-  const myLocationBoards = current.boards.filter((b) => myLocationIds.has(b.locationId));
-  const myLocationLastMonth = {
-    label: lastMonth.label,
-    winners: lastMonth.winners.filter((w) => myLocationIds.has(w.locationId)),
-  };
 
   const myBookings = await db.query.bookings.findMany({
     where: and(eq(bookings.userId, session.userId), eq(bookings.status, "booked")),
@@ -122,19 +112,15 @@ export default async function PortalHome({
         </div>
       </div>
 
-      {myLocationBoards.length > 0 ? (
+      {current.rows.length > 0 ? (
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-600">Your studio's leaderboard</h2>
+            <h2 className="font-600">Leaderboard</h2>
             <Link href="/portal/leaderboard" className="text-sm font-semibold text-magenta">
-              All studios →
+              See full leaderboard →
             </Link>
           </div>
-          <Leaderboard
-            currentLabel={current.label}
-            boards={myLocationBoards}
-            lastMonth={myLocationLastMonth}
-          />
+          <Leaderboard currentLabel={current.label} rows={current.rows} lastMonth={lastMonth} limit={5} />
         </div>
       ) : null}
     </div>

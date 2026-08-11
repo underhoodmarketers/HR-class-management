@@ -1,64 +1,60 @@
-import type { LocationBoard } from "@/lib/leaderboard";
+import type { LeaderboardRow } from "@/lib/leaderboard";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
 export default function Leaderboard({
   currentLabel,
-  boards,
+  rows,
   lastMonth,
+  limit,
 }: {
   currentLabel: string;
-  boards: LocationBoard[];
-  lastMonth: {
-    label: string;
-    winners: { locationId: number; locationName: string; winner: { userName: string; attended: number } }[];
-  };
+  rows: LeaderboardRow[];
+  lastMonth: { label: string; champion: LeaderboardRow | null };
+  limit?: number;
 }) {
+  const visible = limit ? rows.slice(0, limit) : rows;
+
   return (
     <div className="space-y-6">
-      {lastMonth.winners.length > 0 ? (
-        <div>
-          <h2 className="mb-3 font-600">{lastMonth.label} champions</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {lastMonth.winners.map((w) => (
-              <div key={w.locationId} className="card p-5 text-center">
-                <p className="text-2xl">🏆</p>
-                <p className="mt-1 font-600">{w.winner.userName}</p>
-                <p className="text-xs text-ink/50">{w.locationName}</p>
-                <p className="mt-1 text-xs text-magenta">
-                  {w.winner.attended} class{w.winner.attended === 1 ? "" : "es"} attended
-                </p>
-              </div>
-            ))}
-          </div>
+      {lastMonth.champion ? (
+        <div className="card p-5 text-center">
+          <p className="text-2xl">🏆</p>
+          <p className="mt-1 font-600">
+            {lastMonth.champion.userName}
+            <span className="font-400 text-ink/50"> ({lastMonth.champion.locationNames})</span>
+          </p>
+          <p className="text-xs text-ink/50">{lastMonth.label} champion</p>
+          <p className="mt-1 text-xs text-magenta">
+            {lastMonth.champion.percent}% attendance ({lastMonth.champion.attended}/
+            {lastMonth.champion.possible} classes)
+          </p>
         </div>
       ) : null}
 
       <div>
         <h2 className="mb-3 font-600">{currentLabel} · live</h2>
-        <div className="grid gap-6 lg:grid-cols-2">
-          {boards.map((board) => (
-            <div key={board.locationId} className="card p-6">
-              <h3 className="mb-3 font-600">{board.locationName}</h3>
-              {board.rows.length === 0 ? (
-                <p className="text-sm text-ink/40">No classes attended yet this month.</p>
-              ) : (
-                <ul className="divide-y divide-ink/5 text-sm">
-                  {board.rows.slice(0, 10).map((r, i) => (
-                    <li key={r.userId} className="flex items-center justify-between py-2">
-                      <span className="flex items-center gap-2">
-                        <span className="w-6 text-center">{MEDALS[i] ?? i + 1}</span>
-                        {r.userName}
-                      </span>
-                      <span className="text-xs text-ink/50">
-                        {r.attended} class{r.attended === 1 ? "" : "es"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
+        <div className="card p-6">
+          {visible.length === 0 ? (
+            <p className="text-sm text-ink/40">No classes attended yet this month.</p>
+          ) : (
+            <ul className="divide-y divide-ink/5 text-sm">
+              {visible.map((r, i) => (
+                <li key={r.userId} className="flex items-center justify-between gap-3 py-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="w-6 shrink-0 text-center">{MEDALS[i] ?? i + 1}</span>
+                    <span className="truncate">
+                      {r.userName}
+                      <span className="text-ink/40"> ({r.locationNames})</span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-ink/50">
+                    {r.percent}% ({r.attended}/{r.possible})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { requireInstructor } from "@/lib/guards";
-import { getCurrentMonthLeaderboard, getLastMonthWinners } from "@/lib/leaderboard";
+import { getCurrentMonthLeaderboard, getLastMonthChampion } from "@/lib/leaderboard";
 import Leaderboard from "@/components/Leaderboard";
 
 export const dynamic = "force-dynamic";
@@ -8,16 +8,18 @@ export default async function InstructorLeaderboardPage() {
   await requireInstructor();
   const [current, lastMonth] = await Promise.all([
     getCurrentMonthLeaderboard(),
-    getLastMonthWinners(),
+    getLastMonthChampion(),
   ]);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-600">Leaderboard</h1>
-        <p className="text-sm text-ink/50">Classes attended, by studio.</p>
+        <p className="text-sm text-ink/50">
+          Attendance rate this month, against classes held at each person's own studio(s).
+        </p>
       </div>
-      <Leaderboard currentLabel={current.label} boards={current.boards} lastMonth={lastMonth} />
+      <Leaderboard currentLabel={current.label} rows={current.rows} lastMonth={lastMonth} />
     </div>
   );
 }
