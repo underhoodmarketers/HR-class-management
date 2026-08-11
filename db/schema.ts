@@ -448,6 +448,10 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
     fields: [bookings.sessionId],
     references: [classSessions.id],
   }),
+  membership: one(memberships, {
+    fields: [bookings.membershipId],
+    references: [memberships.id],
+  }),
 }));
 
 export const waiverSignaturesRelations = relations(waiverSignatures, ({ one }) => ({

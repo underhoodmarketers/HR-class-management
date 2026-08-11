@@ -70,7 +70,11 @@ export default async function CalendarPage({
         gte(classSessions.startsAt, dayStart),
         lt(classSessions.startsAt, dayEnd)
       ),
-      with: { classType: true, location: true, bookings: { with: { user: true } } },
+      with: {
+        classType: true,
+        location: true,
+        bookings: { with: { user: true, membership: { with: { package: true } } } },
+      },
       orderBy: [classSessions.startsAt],
     }),
     db.query.users.findMany({
@@ -411,6 +415,17 @@ export default async function CalendarPage({
                   const activeBookings = s.bookings.filter(
                     (b) => b.status === "booked"
                   );
+                  const cancelledBookings = s.bookings.filter(
+                    (b) => b.status === "canceled"
+                  );
+                  const toRosterEntry = (b: (typeof s.bookings)[number]) => ({
+                    bookingId: b.id,
+                    userId: b.userId,
+                    name: b.user.name,
+                    contact: b.user.phone || b.user.email,
+                    packageName: b.membership?.package.name ?? null,
+                    signedUpAt: b.createdAt,
+                  });
 
                   return (
                     <li key={s.id}>
@@ -443,12 +458,8 @@ export default async function CalendarPage({
                         timeLabel={formatTime(s.startsAt)}
                         startValue={formatDateTimeLocalValue(s.startsAt)}
                         seriesRemaining={seriesRemaining[i]}
-                        roster={activeBookings.map((b) => ({
-                          bookingId: b.id,
-                          userId: b.userId,
-                          name: b.user.name,
-                          contact: b.user.phone || b.user.email,
-                        }))}
+                        roster={activeBookings.map(toRosterEntry)}
+                        cancelledRoster={cancelledBookings.map(toRosterEntry)}
                         customers={customers.map((c) => ({ id: c.id, name: c.name }))}
                       />
                     </li>
