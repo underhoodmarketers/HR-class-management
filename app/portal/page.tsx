@@ -6,14 +6,20 @@ import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
 import { getCurrentMonthLeaderboard, getLastMonthChampion } from "@/lib/leaderboard";
 import { formatDay, formatTime, isBirthdayToday } from "@/lib/utils";
+import { stripe, stripeConfigured } from "@/lib/stripe";
 import Leaderboard from "@/components/Leaderboard";
+import CancelSubscriptionButton from "@/components/CancelSubscriptionButton";
 
 export const dynamic = "force-dynamic";
+
+const cancelErrorMessages: Record<string, string> = {
+  cancel_invalid: "That subscription can't be canceled from here.",
+};
 
 export default async function PortalHome({
   searchParams,
 }: {
-  searchParams: { purchase?: string };
+  searchParams: { purchase?: string; canceled?: string; error?: string };
 }) {
   const session = await requireUser();
 
@@ -24,6 +30,22 @@ export default async function PortalHome({
     getLastMonthChampion(),
   ]);
   const now = new Date();
+
+  // Live from Stripe, not stored locally — always accurate, no sync to drift.
+  let subscriptionCancelAt: Date | null = null;
+  if (
+    active &&
+    active.membership.billingType === "recurring" &&
+    active.membership.stripeSubscriptionId &&
+    stripeConfigured()
+  ) {
+    const subscription = await stripe.subscriptions.retrieve(active.membership.stripeSubscriptionId);
+    if (subscription.cancel_at) {
+      subscriptionCancelAt = new Date(subscription.cancel_at * 1000);
+    } else if (subscription.cancel_at_period_end) {
+      subscriptionCancelAt = new Date(subscription.current_period_end * 1000);
+    }
+  }
 
   const myBookings = await db.query.bookings.findMany({
     where: and(eq(bookings.userId, session.userId), eq(bookings.status, "booked")),
@@ -56,6 +78,20 @@ export default async function PortalHome({
         </div>
       ) : null}
 
+      {searchParams.canceled === "1" ? (
+        <div className="rounded-2xl bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          Autopay canceled — you won&apos;t be charged again after your notice period ends.
+        </div>
+      ) : searchParams.canceled === "already" ? (
+        <div className="rounded-2xl bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          That subscription is already set to cancel.
+        </div>
+      ) : searchParams.error && cancelErrorMessages[searchParams.error] ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {cancelErrorMessages[searchParams.error]}
+        </div>
+      ) : null}
+
       <div className="rounded-3xl bg-brand-gradient p-6 text-white shadow-card">
         <p className="text-sm text-white/70">Your membership</p>
         {active ? (
@@ -75,6 +111,16 @@ export default async function PortalHome({
                 <p className="text-lg font-600">{formatDay(active.membership.endsAt)}</p>
               </div>
             </div>
+            {active.membership.billingType === "recurring" ? (
+              subscriptionCancelAt ? (
+                <p className="mt-4 text-xs text-white/70">
+                  Autopay is canceled — your last charge was your final one, and access ends{" "}
+                  {formatDay(subscriptionCancelAt)}.
+                </p>
+              ) : (
+                <CancelSubscriptionButton membershipId={active.membership.id} />
+              )
+            ) : null}
           </>
         ) : (
           <>

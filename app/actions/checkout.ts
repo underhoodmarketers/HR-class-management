@@ -1,12 +1,16 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { packages, users, userLocations } from "@/db/schema";
+import { memberships, packages, users, userLocations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { stripeFeeCents } from "@/lib/utils";
 import { resolvePromoCode } from "@/lib/promoCodes";
+
+const MIN_CANCEL_NOTICE_SECONDS = 28 * 24 * 60 * 60; // 4 weeks
 
 export type BillingType = "one_time" | "recurring";
 
@@ -146,4 +150,43 @@ export async function createEmbeddedCheckout(
 
   if (!checkout.client_secret) return { error: "Something went wrong starting checkout." };
   return { clientSecret: checkout.client_secret };
+}
+
+/**
+ * Cancels a customer's own autopay subscription, always guaranteeing at
+ * least 4 weeks' notice: if the current billing period already ends 4+
+ * weeks out, it cancels then (no extra charge); otherwise the subscription
+ * keeps billing as scheduled and is set to stop exactly 4 weeks from now.
+ */
+export async function cancelSubscription(formData: FormData) {
+  const session = await requireUser();
+  const membershipId = Number(formData.get("membershipId"));
+  if (!membershipId) redirect("/portal?error=cancel_invalid");
+
+  const membership = await db.query.memberships.findFirst({
+    where: and(eq(memberships.id, membershipId), eq(memberships.userId, session.userId)),
+  });
+  if (
+    !membership ||
+    membership.billingType !== "recurring" ||
+    !membership.stripeSubscriptionId ||
+    !stripeConfigured()
+  ) {
+    redirect("/portal?error=cancel_invalid");
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(membership.stripeSubscriptionId!);
+  if (subscription.status === "canceled" || subscription.cancel_at_period_end || subscription.cancel_at) {
+    redirect("/portal?canceled=already");
+  }
+
+  const noticeAt = Math.floor(Date.now() / 1000) + MIN_CANCEL_NOTICE_SECONDS;
+  if (subscription.current_period_end >= noticeAt) {
+    await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+  } else {
+    await stripe.subscriptions.update(subscription.id, { cancel_at: noticeAt });
+  }
+
+  revalidatePath("/portal");
+  redirect("/portal?canceled=1");
 }
