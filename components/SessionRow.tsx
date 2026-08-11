@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   editSession,
   cancelSession,
   deleteSession,
   deleteSeries,
-  adminBookClass,
 } from "@/app/actions/admin";
 import { SubmitButton } from "./SubmitButton";
 
@@ -22,24 +22,7 @@ type Session = {
   locationId: number;
 };
 
-type RosterEntry = {
-  bookingId: number;
-  userId: number;
-  name: string;
-  contact: string;
-  packageName: string | null;
-  signedUpAt: Date;
-};
 type InstructorOption = { id: number; name: string; studioNames: string };
-
-function formatSignedUpAt(d: Date) {
-  return new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export default function SessionRow({
   session,
@@ -53,9 +36,6 @@ export default function SessionRow({
   timeLabel,
   startValue,
   seriesRemaining,
-  roster,
-  cancelledRoster,
-  customers,
 }: {
   session: Session;
   className: string;
@@ -68,155 +48,12 @@ export default function SessionRow({
   timeLabel: string;
   startValue: string;
   seriesRemaining: number;
-  roster: RosterEntry[];
-  cancelledRoster: RosterEntry[];
-  customers: { id: number; name: string }[];
 }) {
-  const [editing, setEditing] = useState<null | "one" | "series" | "roster">(null);
-  const [rosterTab, setRosterTab] = useState<"signups" | "cancelled">("signups");
-  const [search, setSearch] = useState("");
-  const bookableCustomers = customers.filter(
-    (c) => !roster.some((r) => r.userId === c.id)
-  );
+  const [editing, setEditing] = useState<null | "one" | "series">(null);
 
   const durationMin = Math.round(
     (session.endsAt.getTime() - session.startsAt.getTime()) / 60000
   );
-
-  if (editing === "roster") {
-    const list = rosterTab === "signups" ? roster : cancelledRoster;
-    const q = search.trim().toLowerCase();
-    const filtered = q
-      ? list.filter(
-          (r) =>
-            r.name.toLowerCase().includes(q) ||
-            r.contact.toLowerCase().includes(q)
-        )
-      : list;
-
-    return (
-      <div className="bg-blush/20 p-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="font-medium">{className}</p>
-            <p className="text-xs text-ink/50">
-              {locationName} · {dayLabel} {timeLabel}
-              {assignedInstructorName ? ` · ${assignedInstructorName}` : ""}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setEditing(null)}
-            className="text-xs text-ink/40 hover:text-ink/60"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-white px-3 py-2 text-center">
-            <p className="text-lg font-600 text-magenta-deep">
-              {booked}/{session.capacity}
-            </p>
-            <p className="text-[11px] text-ink/40">Signups</p>
-          </div>
-          <div className="rounded-xl bg-white px-3 py-2 text-center">
-            <p className="text-lg font-600 text-magenta-deep">{durationMin}</p>
-            <p className="text-[11px] text-ink/40">Minutes</p>
-          </div>
-          <div className="rounded-xl bg-white px-3 py-2 text-center">
-            <p className="text-lg font-600 text-magenta-deep">
-              {cancelledRoster.length}
-            </p>
-            <p className="text-[11px] text-ink/40">Cancelled</p>
-          </div>
-        </div>
-
-        <div className="mb-3 flex items-center gap-1 border-b border-ink/10">
-          <button
-            type="button"
-            onClick={() => setRosterTab("signups")}
-            className={`px-3 py-1.5 text-xs font-medium ${
-              rosterTab === "signups"
-                ? "border-b-2 border-magenta text-magenta-deep"
-                : "text-ink/40"
-            }`}
-          >
-            Signups ({roster.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setRosterTab("cancelled")}
-            className={`px-3 py-1.5 text-xs font-medium ${
-              rosterTab === "cancelled"
-                ? "border-b-2 border-magenta text-magenta-deep"
-                : "text-ink/40"
-            }`}
-          >
-            Cancelled ({cancelledRoster.length})
-          </button>
-        </div>
-
-        {list.length > 3 ? (
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search this list…"
-            className="input mb-2 text-sm"
-          />
-        ) : null}
-
-        {filtered.length > 0 ? (
-          <ul className="mb-3 divide-y divide-ink/10 rounded-xl bg-white text-sm">
-            {filtered.map((r) => (
-              <li key={r.bookingId} className="px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{r.name}</span>
-                  <span className="text-xs text-ink/40">
-                    {formatSignedUpAt(r.signedUpAt)}
-                  </span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-ink/40">{r.contact}</span>
-                  {r.packageName ? (
-                    <span className="rounded-full bg-blush px-2 py-0.5 text-[11px] text-magenta-deep">
-                      {r.packageName}
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mb-3 text-sm text-ink/50">
-            {rosterTab === "signups" ? "Nobody booked yet." : "No cancellations."}
-          </p>
-        )}
-
-        {rosterTab === "signups" ? (
-          booked < session.capacity && bookableCustomers.length > 0 ? (
-            <form action={adminBookClass} className="flex gap-2">
-              <input type="hidden" name="sessionId" value={session.id} />
-              <select name="userId" className="input" required defaultValue="">
-                <option value="" disabled>
-                  Add customer into this class…
-                </option>
-                {bookableCustomers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <SubmitButton className="btn-primary px-4 text-sm">Book</SubmitButton>
-            </form>
-          ) : booked >= session.capacity ? (
-            <p className="text-xs text-ink/40">Class is full.</p>
-          ) : null
-        ) : null}
-      </div>
-    );
-  }
 
   if (editing === "one" || editing === "series") {
     return (
@@ -330,9 +167,10 @@ export default function SessionRow({
 
   return (
     <div className="flex items-start justify-between gap-3 p-4">
-      <button
-        type="button"
-        onClick={() => setEditing("roster")}
+      <Link
+        href={`/admin/calendar/session/${session.id}`}
+        target="_blank"
+        rel="noopener noreferrer"
         className="flex min-w-0 gap-3 text-left"
       >
         <span className="mt-0.5 h-9 w-1.5 shrink-0 rounded-full bg-magenta" />
@@ -356,16 +194,17 @@ export default function SessionRow({
             {assignedInstructorName ? ` · Assigned: ${assignedInstructorName}` : ""}
           </p>
         </div>
-      </button>
+      </Link>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-        <button
-          type="button"
-          onClick={() => setEditing("roster")}
+        <Link
+          href={`/admin/calendar/session/${session.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="btn-ghost px-3 py-1.5 text-xs"
         >
           View details
-        </button>
+        </Link>
 
         <button
           type="button"

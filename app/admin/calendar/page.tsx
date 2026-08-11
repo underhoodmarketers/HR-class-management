@@ -51,7 +51,7 @@ export default async function CalendarPage({
   const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
   const dayEnd = addStudioDays(dayStart, 1);
 
-  const [types, studios, gridSessions, agendaSessions, customers, instructors] = await Promise.all([
+  const [types, studios, gridSessions, agendaSessions, instructors] = await Promise.all([
     db.select().from(classTypes),
     db
       .select()
@@ -73,13 +73,9 @@ export default async function CalendarPage({
       with: {
         classType: true,
         location: true,
-        bookings: { with: { user: true, membership: { with: { package: true } } } },
+        bookings: true,
       },
       orderBy: [classSessions.startsAt],
-    }),
-    db.query.users.findMany({
-      where: eq(users.role, "customer"),
-      orderBy: (u, { asc }) => [asc(u.name)],
     }),
     db.query.users.findMany({
       where: eq(users.role, "instructor"),
@@ -415,17 +411,6 @@ export default async function CalendarPage({
                   const activeBookings = s.bookings.filter(
                     (b) => b.status === "booked"
                   );
-                  const cancelledBookings = s.bookings.filter(
-                    (b) => b.status === "canceled"
-                  );
-                  const toRosterEntry = (b: (typeof s.bookings)[number]) => ({
-                    bookingId: b.id,
-                    userId: b.userId,
-                    name: b.user.name,
-                    contact: b.user.phone || b.user.email,
-                    packageName: b.membership?.package.name ?? null,
-                    signedUpAt: b.createdAt,
-                  });
 
                   return (
                     <li key={s.id}>
@@ -458,9 +443,6 @@ export default async function CalendarPage({
                         timeLabel={formatTime(s.startsAt)}
                         startValue={formatDateTimeLocalValue(s.startsAt)}
                         seriesRemaining={seriesRemaining[i]}
-                        roster={activeBookings.map(toRosterEntry)}
-                        cancelledRoster={cancelledBookings.map(toRosterEntry)}
-                        customers={customers.map((c) => ({ id: c.id, name: c.name }))}
                       />
                     </li>
                   );

@@ -366,6 +366,7 @@ export async function adminBookClass(formData: FormData) {
   }
 
   revalidatePath("/admin/calendar");
+  revalidatePath(`/admin/calendar/session/${sessionId}`);
   revalidatePath("/admin");
 }
 
@@ -376,6 +377,7 @@ export async function cancelSession(formData: FormData) {
   await refundBookingsForSessions([id]);
   await db.update(classSessions).set({ canceled: true }).where(eq(classSessions.id, id));
   revalidatePath("/admin/calendar");
+  revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
 }
 
@@ -386,6 +388,7 @@ export async function deleteSession(formData: FormData) {
   await refundBookingsForSessions([id]);
   await db.delete(classSessions).where(eq(classSessions.id, id));
   revalidatePath("/admin/calendar");
+  revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
 }
 
