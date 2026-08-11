@@ -147,7 +147,7 @@ export default async function InstructorCustomersPage({
         <>
           <CustomersFilterBar showWaiver={false} />
 
-          <div className="card overflow-hidden">
+          <div className="card overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-blush/50 text-left text-xs uppercase tracking-wide text-ink/50">
                 <tr>

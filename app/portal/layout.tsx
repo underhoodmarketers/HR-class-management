@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/guards";
 import { logoutAction } from "@/app/actions/auth";
+import MobileNav from "@/components/MobileNav";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +24,20 @@ export default async function PortalLayout({
   return (
     <div className="min-h-screen bg-cream">
       <header className="sticky top-0 z-20 border-b border-ink/5 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
-          <Link href="/portal" className="font-display text-lg font-600">
-            Holistic <span className="text-magenta">Rhythm</span>
-          </Link>
-          <nav className="flex items-center gap-1">
+        <div className="relative mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-2">
+            <MobileNav items={nav}>
+              <form action={logoutAction}>
+                <button className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-magenta hover:bg-blush">
+                  Sign out
+                </button>
+              </form>
+            </MobileNav>
+            <Link href="/portal" className="font-display text-lg font-600">
+              Holistic <span className="text-magenta">Rhythm</span>
+            </Link>
+          </div>
+          <nav className="hidden items-center gap-1 lg:flex">
             {nav.map((item) => (
               <Link
                 key={item.href}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireInstructor } from "@/lib/guards";
 import { logoutAction } from "@/app/actions/auth";
+import MobileNav from "@/components/MobileNav";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,11 @@ export default async function InstructorLayout({
         </div>
       </aside>
 
-      <header className="flex items-center justify-between border-b border-ink/5 bg-white px-5 py-3 lg:hidden">
-        <span className="font-display text-lg font-600">Holistic Rhythm</span>
+      <header className="relative flex items-center justify-between border-b border-ink/5 bg-white px-5 py-3 lg:hidden">
+        <div className="flex items-center gap-2">
+          <MobileNav items={nav} />
+          <span className="font-display text-lg font-600">Holistic Rhythm</span>
+        </div>
         <form action={logoutAction}>
           <button className="text-sm font-semibold text-magenta">Sign out</button>
         </form>
