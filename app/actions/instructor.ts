@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { bookings, classSessions, instructorLocations, memberships, users } from "@/db/schema";
+import { bookings, classSessions, instructorLocations, memberships, users, userLocations } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
 import { sendBulkEmail, sendSingleEmail } from "@/lib/email";
@@ -136,7 +136,16 @@ export async function sendInstructorBulkEmail(formData: FormData) {
   }
 
   const customers = await db.query.users.findMany({
-    where: and(eq(users.role, "customer"), inArray(users.locationId, locationIds)),
+    where: and(
+      eq(users.role, "customer"),
+      inArray(
+        users.id,
+        db
+          .select({ userId: userLocations.userId })
+          .from(userLocations)
+          .where(inArray(userLocations.locationId, locationIds))
+      )
+    ),
     columns: { email: true },
   });
   const recipients = customers.map((c) => c.email);
@@ -174,7 +183,17 @@ export async function sendInstructorCustomerEmail(formData: FormData) {
   }
 
   const customer = await db.query.users.findFirst({
-    where: and(eq(users.id, customerId), eq(users.role, "customer"), inArray(users.locationId, locationIds)),
+    where: and(
+      eq(users.id, customerId),
+      eq(users.role, "customer"),
+      inArray(
+        users.id,
+        db
+          .select({ userId: userLocations.userId })
+          .from(userLocations)
+          .where(inArray(userLocations.locationId, locationIds))
+      )
+    ),
   });
   if (!customer) {
     redirect("/instructor/customers?error=email_invalid");

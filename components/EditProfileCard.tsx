@@ -10,7 +10,7 @@ type Profile = {
   phone: string | null;
   dob: string | null;
   instagram: string | null;
-  locationId: number | null;
+  locationIds: number[];
 };
 
 export default function EditProfileCard({
@@ -21,7 +21,10 @@ export default function EditProfileCard({
   studios: { id: number; name: string }[];
 }) {
   const [editing, setEditing] = useState(false);
-  const studioName = studios.find((s) => s.id === profile.locationId)?.name;
+  const studioNames = studios
+    .filter((s) => profile.locationIds.includes(s.id))
+    .map((s) => s.name)
+    .join(", ");
 
   if (editing) {
     return (
@@ -60,23 +63,21 @@ export default function EditProfileCard({
                 className="input"
               />
             </div>
-            <div>
-              <label className="label">Preferred studio</label>
-              <select
-                name="locationId"
-                defaultValue={profile.locationId ?? ""}
-                required
-                className="input"
-              >
-                <option value="" disabled>
-                  Choose a studio
-                </option>
+            <div className="sm:col-span-2">
+              <label className="label">Preferred studio(s)</label>
+              <div className="flex flex-wrap gap-3 rounded-xl border border-ink/10 p-3">
                 {studios.map((s) => (
-                  <option key={s.id} value={s.id}>
+                  <label key={s.id} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      name="locationIds"
+                      value={s.id}
+                      defaultChecked={profile.locationIds.includes(s.id)}
+                    />
                     {s.name}
-                  </option>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
             <div>
               <label className="label">Instagram</label>
@@ -111,7 +112,7 @@ export default function EditProfileCard({
         <div><dt className="text-ink/40">Email</dt><dd>{profile.email}</dd></div>
         <div><dt className="text-ink/40">Phone</dt><dd>{profile.phone || "—"}</dd></div>
         <div><dt className="text-ink/40">Date of birth</dt><dd>{formatDob(profile.dob)}</dd></div>
-        <div><dt className="text-ink/40">Preferred studio</dt><dd>{studioName || "—"}</dd></div>
+        <div><dt className="text-ink/40">Preferred studio(s)</dt><dd>{studioNames || "—"}</dd></div>
         <div>
           <dt className="text-ink/40">Instagram</dt>
           <dd>

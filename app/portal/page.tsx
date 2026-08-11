@@ -19,16 +19,20 @@ export default async function PortalHome({
 
   const [active, profile, current, lastMonth] = await Promise.all([
     getActiveMembership(session.userId),
-    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
+    db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+      with: { locations: true },
+    }),
     getCurrentMonthLeaderboard(),
     getLastMonthWinners(),
   ]);
   const now = new Date();
 
-  const myLocationBoards = current.boards.filter((b) => b.locationId === profile?.locationId);
+  const myLocationIds = new Set((profile?.locations ?? []).map((l) => l.locationId));
+  const myLocationBoards = current.boards.filter((b) => myLocationIds.has(b.locationId));
   const myLocationLastMonth = {
     label: lastMonth.label,
-    winners: lastMonth.winners.filter((w) => w.locationId === profile?.locationId),
+    winners: lastMonth.winners.filter((w) => myLocationIds.has(w.locationId)),
   };
 
   const myBookings = await db.query.bookings.findMany({

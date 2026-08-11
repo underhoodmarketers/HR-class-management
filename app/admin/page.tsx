@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, gte, eq, count, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { users, classSessions, memberships, locations } from "@/db/schema";
+import { users, classSessions, memberships, locations, userLocations } from "@/db/schema";
 import { formatDay, formatTime } from "@/lib/utils";
 import AdminBulkEmailForm from "@/components/AdminBulkEmailForm";
 
@@ -34,10 +34,11 @@ export default async function AdminDashboard({
       }),
       db.select().from(locations).where(and(eq(locations.active, true), isNull(locations.archivedAt))),
       db
-        .select({ locationId: users.locationId, value: count() })
-        .from(users)
+        .select({ locationId: userLocations.locationId, value: count() })
+        .from(userLocations)
+        .innerJoin(users, eq(users.id, userLocations.userId))
         .where(eq(users.role, "customer"))
-        .groupBy(users.locationId),
+        .groupBy(userLocations.locationId),
     ]);
 
   const stats = [

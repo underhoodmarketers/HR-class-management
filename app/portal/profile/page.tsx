@@ -9,7 +9,7 @@ import ChangePasswordCard from "@/components/ChangePasswordCard";
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  invalid: "Fill in name, email, phone, date of birth, and preferred studio.",
+  invalid: "Fill in name, email, phone, date of birth, and at least one preferred studio.",
   exists: "Another account already uses that email.",
 };
 
@@ -27,7 +27,10 @@ export default async function ProfilePage({
   const session = await requireUser();
 
   const [profile, studios] = await Promise.all([
-    db.query.users.findFirst({ where: eq(users.id, session.userId) }),
+    db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+      with: { locations: true },
+    }),
     db
       .select()
       .from(locations)
@@ -98,7 +101,7 @@ export default async function ProfilePage({
           phone: profile.phone,
           dob: profile.dob,
           instagram: profile.instagram,
-          locationId: profile.locationId,
+          locationIds: profile.locations.map((l) => l.locationId),
         }}
         studios={studios}
       />

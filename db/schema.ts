@@ -25,9 +25,6 @@ export const users = pgTable("users", {
   dob: date("dob"),
   instagram: varchar("instagram", { length: 60 }),
   notes: text("notes"),
-  // Preferred home studio, collected at signup. Required for new customer
-  // signups at the app level; nullable here since older accounts predate it.
-  locationId: integer("location_id").references(() => locations.id),
   // Banked "makeup class" credits — leftover credits swept in from a prior
   // package when a new one is bought. Never expire; drawn on only once a
   // membership's own per-cycle credits are exhausted.
@@ -118,6 +115,21 @@ export const packageLocations = pgTable(
 // Which studios an instructor is assigned to.
 export const instructorLocations = pgTable(
   "instructor_locations",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    locationId: integer("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.userId, t.locationId] }) })
+);
+
+// A customer's preferred studio(s), chosen at signup and editable after —
+// a customer can pick more than one.
+export const userLocations = pgTable(
+  "user_locations",
   {
     userId: integer("user_id")
       .notNull()
@@ -355,9 +367,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   bookings: many(bookings),
   signatures: many(waiverSignatures),
   instructorLocations: many(instructorLocations),
+  locations: many(userLocations),
   zellePayments: many(zellePayments),
   payouts: many(instructorPayouts),
-  location: one(locations, { fields: [users.locationId], references: [locations.id] }),
 }));
 
 export const instructorPayoutsRelations = relations(instructorPayouts, ({ one }) => ({
@@ -406,6 +418,14 @@ export const instructorLocationsRelations = relations(instructorLocations, ({ on
   user: one(users, { fields: [instructorLocations.userId], references: [users.id] }),
   location: one(locations, {
     fields: [instructorLocations.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const userLocationsRelations = relations(userLocations, ({ one }) => ({
+  user: one(users, { fields: [userLocations.userId], references: [users.id] }),
+  location: one(locations, {
+    fields: [userLocations.locationId],
     references: [locations.id],
   }),
 }));

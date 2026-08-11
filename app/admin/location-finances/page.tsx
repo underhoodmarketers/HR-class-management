@@ -24,6 +24,15 @@ const errorMessages: Record<string, string> = {
 // single line so table rows stay one line tall.
 const clean = (s: string) => s.replace(/\s*\n+\s*/g, " ").trim();
 
+// Splits a purchase's revenue evenly across a customer's studios (rounded to
+// the cent, remainder distributed to the first few so the shares always sum
+// back to the original total exactly).
+function splitEvenly(totalCents: number, n: number): number[] {
+  const base = Math.floor(totalCents / n);
+  const remainder = totalCents - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
 type LedgerRow = {
   date: Date;
   type: "Revenue" | "Expense";
@@ -73,7 +82,10 @@ export default async function LocationFinancesPage({
     db.query.locationRevenueHistory.findMany(),
     db.query.memberships.findMany({
       where: and(lt(memberships.createdAt, now), inArray(memberships.billingType, ["one_time", "recurring", "zelle"])),
-      with: { package: true, user: { columns: { name: true, locationId: true } } },
+      with: {
+        package: true,
+        user: { columns: { name: true }, with: { locations: true } },
+      },
     }),
   ]);
 
@@ -98,12 +110,20 @@ export default async function LocationFinancesPage({
           amountCents: r.amountCents,
         });
       }
-      for (const m of liveMemberships.filter((m) => m.user.locationId === location.id)) {
+      for (const m of liveMemberships) {
+        const locIds = [...new Set(m.user.locations.map((l) => l.locationId))].sort((a, b) => a - b);
+        const idx = locIds.indexOf(location.id);
+        if (idx === -1) continue; // this customer's studios don't include this one
+
+        const shares = splitEvenly(m.package.priceCents, locIds.length);
         ledger.push({
           date: m.createdAt,
           type: "Revenue",
-          description: `${m.user.name} — ${m.package.name}`,
-          amountCents: m.package.priceCents,
+          description:
+            locIds.length > 1
+              ? `${m.user.name} — ${m.package.name} (split across ${locIds.length} studios)`
+              : `${m.user.name} — ${m.package.name}`,
+          amountCents: shares[idx],
         });
       }
       for (const e of expenses.filter((e) => e.locationId === location.id)) {

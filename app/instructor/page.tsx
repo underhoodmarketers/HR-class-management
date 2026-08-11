@@ -51,7 +51,7 @@ export default async function InstructorDashboardPage({
   const [customers, upcomingSessions] = await Promise.all([
     db.query.users.findMany({
       where: eq(users.role, "customer"),
-      with: { memberships: { with: { package: true } } },
+      with: { memberships: { with: { package: true } }, locations: true },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
     db.query.classSessions.findMany({
@@ -68,8 +68,8 @@ export default async function InstructorDashboardPage({
 
   const upNext = upcomingSessions[0] ?? null;
 
-  // A customer is "yours" if their preferred studio is one you're assigned to.
-  const scoped = customers.filter((c) => c.locationId !== null && myLocationIdSet.has(c.locationId));
+  // A customer is "yours" if any of their preferred studios is one you're assigned to.
+  const scoped = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
 
   const activeMembershipCount = scoped.filter((c) =>
     c.memberships.some((m) => m.status === "active" && m.endsAt.getTime() > now.getTime())

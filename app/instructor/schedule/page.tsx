@@ -116,12 +116,13 @@ export default async function InstructorSchedulePage({
     }),
     db.query.users.findMany({
       where: eq(users.role, "customer"),
+      with: { locations: true },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
   ]);
 
   const myLocationIdSet = new Set(myLocationIds);
-  const myCustomers = customers.filter((c) => c.locationId !== null && myLocationIdSet.has(c.locationId));
+  const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
 
   const byDay = new Map<string, typeof gridSessions>();
   for (const s of gridSessions) {

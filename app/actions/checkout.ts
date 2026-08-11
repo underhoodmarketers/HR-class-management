@@ -2,7 +2,7 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { packages, users } from "@/db/schema";
+import { packages, users, userLocations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { stripeFeeCents } from "@/lib/utils";
@@ -15,13 +15,16 @@ export async function validatePromoCode(
   packageId: number
 ): Promise<{ ok: true; label: string } | { ok: false; error: string }> {
   const session = await requireUser();
-  const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.userId),
+    with: { locations: true },
+  });
   if (!user) return { ok: false, error: "That code isn't valid." };
 
   const result = await resolvePromoCode(code, {
     userId: user.id,
     packageId,
-    locationId: user.locationId,
+    locationIds: user.locations.map((l) => l.locationId),
   });
   if (!result.ok) return result;
   return { ok: true, label: result.label };
@@ -54,11 +57,14 @@ export async function createEmbeddedCheckout(
 
   let discounts: { promotion_code: string }[] | undefined;
   if (promoCode) {
-    const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+      with: { locations: true },
+    });
     const result = await resolvePromoCode(promoCode, {
       userId: session.userId,
       packageId,
-      locationId: user?.locationId ?? null,
+      locationIds: user?.locations.map((l) => l.locationId) ?? [],
     });
     if (!result.ok) return { error: result.error };
     discounts = [{ promotion_code: result.stripePromotionCodeId }];

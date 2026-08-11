@@ -14,7 +14,7 @@ import TrialCreditCard from "@/components/TrialCreditCard";
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  invalid: "Fill in name, email, phone, date of birth, and preferred studio.",
+  invalid: "Fill in name, email, phone, date of birth, and at least one preferred studio.",
   exists: "Another account already uses that email.",
   membership_invalid: "Fill in a package, valid dates, and non-negative credits.",
   stripe_not_configured: "Payments aren't set up, so a promo code can't be created.",
@@ -52,7 +52,7 @@ export default async function CustomerDetail({
           orderBy: (m, { desc }) => [desc(m.createdAt)],
         },
         signatures: true,
-        location: true,
+        locations: true,
       },
     }),
     db
@@ -163,7 +163,7 @@ export default async function CustomerDetail({
             phone: customer.phone,
             dob: customer.dob,
             instagram: customer.instagram,
-            locationId: customer.locationId,
+            locationIds: customer.locations.map((l) => l.locationId),
           }}
           studios={studios}
         />

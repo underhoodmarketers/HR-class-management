@@ -14,7 +14,7 @@ import { formatMoney } from "./utils";
  */
 export async function resolvePromoCode(
   rawCode: string,
-  ctx: { userId: number; packageId: number; locationId: number | null }
+  ctx: { userId: number; packageId: number; locationIds: number[] }
 ): Promise<{ ok: true; stripePromotionCodeId: string; label: string } | { ok: false; error: string }> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a promo code." };
@@ -33,7 +33,7 @@ export async function resolvePromoCode(
   }
   if (
     promo.locations.length > 0 &&
-    (ctx.locationId === null || !promo.locations.some((l) => l.locationId === ctx.locationId))
+    !promo.locations.some((l) => ctx.locationIds.includes(l.locationId))
   ) {
     return { ok: false, error: "That code isn't valid for your studio." };
   }

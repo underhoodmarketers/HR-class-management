@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, userLocations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { createSession } from "@/lib/auth";
 
@@ -15,7 +15,10 @@ export async function updateProfile(formData: FormData) {
   const phone = String(formData.get("phone") || "").trim();
   const dob = String(formData.get("dob") || "");
   const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
-  const locationId = Number(formData.get("locationId"));
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
 
   const invalid =
     name.length < 2 ||
@@ -23,7 +26,7 @@ export async function updateProfile(formData: FormData) {
     !phone ||
     !dob ||
     isNaN(Date.parse(dob)) ||
-    !locationId;
+    locationIds.length === 0;
   if (invalid) {
     redirect("/portal/profile?error=invalid");
   }
@@ -33,10 +36,11 @@ export async function updateProfile(formData: FormData) {
     redirect("/portal/profile?error=exists");
   }
 
+  await db.update(users).set({ name, email, phone, dob, instagram }).where(eq(users.id, session.userId));
+  await db.delete(userLocations).where(eq(userLocations.userId, session.userId));
   await db
-    .update(users)
-    .set({ name, email, phone, dob, instagram, locationId })
-    .where(eq(users.id, session.userId));
+    .insert(userLocations)
+    .values(locationIds.map((locationId) => ({ userId: session.userId, locationId })));
 
   // Session cookie embeds name/email — re-issue so the UI and Stripe
   // checkout (which reads session.email) reflect the change immediately.

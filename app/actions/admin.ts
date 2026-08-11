@@ -20,6 +20,7 @@ import {
   promoCodeCustomers,
   promoCodeLocations,
   users,
+  userLocations,
   waiverSignatures,
   waiverTemplate,
   zellePayments,
@@ -692,7 +693,10 @@ export async function createCustomer(formData: FormData) {
   const phone = String(formData.get("phone") || "").trim();
   const dob = String(formData.get("dob") || "");
   const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
-  const locationId = Number(formData.get("locationId"));
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
   const password = String(formData.get("password") || "");
   const signedName = String(formData.get("signedName") || "").trim();
 
@@ -704,7 +708,7 @@ export async function createCustomer(formData: FormData) {
     !phone ||
     !dob ||
     isNaN(Date.parse(dob)) ||
-    !locationId ||
+    locationIds.length === 0 ||
     password.length < 8 ||
     !signedName;
   if (invalid) {
@@ -719,8 +723,11 @@ export async function createCustomer(formData: FormData) {
   const passwordHash = await hashPassword(password);
   const [customer] = await db
     .insert(users)
-    .values({ email, passwordHash, name, phone, dob, instagram, locationId, role: "customer" })
+    .values({ email, passwordHash, name, phone, dob, instagram, role: "customer" })
     .returning();
+  await db
+    .insert(userLocations)
+    .values(locationIds.map((locationId) => ({ userId: customer.id, locationId })));
 
   const template = await db.query.waiverTemplate.findFirst({
     orderBy: [desc(waiverTemplate.version)],
@@ -744,7 +751,10 @@ export async function updateCustomer(formData: FormData) {
   const phone = String(formData.get("phone") || "").trim();
   const dob = String(formData.get("dob") || "");
   const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
-  const locationId = Number(formData.get("locationId"));
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
 
   const invalid =
     !id ||
@@ -753,7 +763,7 @@ export async function updateCustomer(formData: FormData) {
     !phone ||
     !dob ||
     isNaN(Date.parse(dob)) ||
-    !locationId;
+    locationIds.length === 0;
   if (invalid) {
     redirect(`/admin/customers/${id}?error=invalid`);
   }
@@ -765,8 +775,12 @@ export async function updateCustomer(formData: FormData) {
 
   await db
     .update(users)
-    .set({ name, email, phone, dob, instagram, locationId })
+    .set({ name, email, phone, dob, instagram })
     .where(and(eq(users.id, id), eq(users.role, "customer")));
+  await db.delete(userLocations).where(eq(userLocations.userId, id));
+  await db
+    .insert(userLocations)
+    .values(locationIds.map((locationId) => ({ userId: id, locationId })));
 
   revalidatePath(`/admin/customers/${id}`);
   revalidatePath("/admin/customers");
@@ -1214,7 +1228,16 @@ export async function sendAdminBulkEmail(formData: FormData) {
 
   const customers = await db.query.users.findMany({
     where: locationId
-      ? and(eq(users.role, "customer"), eq(users.locationId, locationId))
+      ? and(
+          eq(users.role, "customer"),
+          inArray(
+            users.id,
+            db
+              .select({ userId: userLocations.userId })
+              .from(userLocations)
+              .where(eq(userLocations.locationId, locationId))
+          )
+        )
       : eq(users.role, "customer"),
     columns: { email: true },
   });

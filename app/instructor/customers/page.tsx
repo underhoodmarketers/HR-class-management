@@ -73,13 +73,14 @@ export default async function InstructorCustomersPage({
     where: eq(users.role, "customer"),
     with: {
       memberships: { with: { package: true } },
+      locations: true,
     },
     orderBy: (u, { asc }) => [asc(u.name)],
   });
 
-  // A customer is "yours" if their preferred studio is one you're assigned to.
+  // A customer is "yours" if any of their preferred studios is one you're assigned to.
   const scoped = customers
-    .filter((c) => c.locationId !== null && myLocationIds.has(c.locationId))
+    .filter((c) => c.locations.some((l) => myLocationIds.has(l.locationId)))
     .map((c) => {
       const activeMemberships = c.memberships.filter((m) => m.status === "active" && m.endsAt > now);
       const soonestExpiring =

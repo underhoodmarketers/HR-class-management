@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { eq, desc, and, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { users, waiverTemplate, waiverSignatures, passwordResetTokens } from "@/db/schema";
+import { users, waiverTemplate, waiverSignatures, passwordResetTokens, userLocations } from "@/db/schema";
 import {
   hashPassword,
   verifyPassword,
@@ -34,10 +34,6 @@ const signupSchema = z.object({
       return d <= cutoff;
     }, "You must be 18 or older to create an account. Please contact the studio to enroll a minor."),
   instagram: z.string().optional(),
-  locationId: z
-    .string()
-    .min(1, "Choose your preferred studio.")
-    .refine((v) => !Number.isNaN(Number(v)), "Choose your preferred studio."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   signedName: z.string().min(2, "Type your name to sign the waiver."),
   agree: z.string().refine((v) => v === "on", "You must accept the waiver to join."),
@@ -51,9 +47,19 @@ function safeNext(next: string | undefined) {
 }
 
 export async function signupAction(_prev: unknown, formData: FormData) {
+  // Multi-value checkbox fields don't survive Object.fromEntries (it keeps
+  // only the last value per key), so pull locationIds out separately.
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
+
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
+  }
+  if (locationIds.length === 0) {
+    return { error: "Choose at least one preferred studio." };
   }
   const data = parsed.data;
 
@@ -74,10 +80,13 @@ export async function signupAction(_prev: unknown, formData: FormData) {
       phone: data.phone,
       dob: data.dob,
       instagram: data.instagram?.trim().replace(/^@/, "") || null,
-      locationId: Number(data.locationId),
       role: "customer",
     })
     .returning();
+
+  await db
+    .insert(userLocations)
+    .values(locationIds.map((locationId) => ({ userId: user.id, locationId })));
 
   // Record the waiver signature against the current template version.
   const template = await db.query.waiverTemplate.findFirst({

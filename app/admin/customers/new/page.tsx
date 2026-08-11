@@ -57,23 +57,19 @@ export default async function NewCustomerPage({
               <input name="phone" type="tel" required className="input" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date of birth</label>
-              <input name="dob" type="date" required className="input" />
-            </div>
-            <div>
-              <label className="label">Preferred studio</label>
-              <select name="locationId" required defaultValue="" className="input">
-                <option value="" disabled>
-                  Choose a studio
-                </option>
-                {studios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+          <div>
+            <label className="label">Date of birth</label>
+            <input name="dob" type="date" required className="input" />
+          </div>
+          <div>
+            <label className="label">Preferred studio(s)</label>
+            <div className="flex flex-wrap gap-3 rounded-xl border border-ink/10 p-3">
+              {studios.map((s) => (
+                <label key={s.id} className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" name="locationIds" value={s.id} />
+                  {s.name}
+                </label>
+              ))}
             </div>
           </div>
           <div>

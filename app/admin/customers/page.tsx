@@ -81,7 +81,7 @@ export default async function CustomersPage({
           orderBy: (m, { desc }) => [desc(m.createdAt)],
         },
         signatures: true,
-        location: true,
+        locations: { with: { location: true } },
       },
     }),
     db
@@ -107,7 +107,8 @@ export default async function CustomersPage({
   const withCurrent = customers.map((c) => {
     const current = c.memberships[0] ?? null;
     const isActive = current?.status === "active" && current.endsAt > now;
-    return { ...c, current, isActive };
+    const studioNames = c.locations.map((l) => l.location.name).join(", ");
+    return { ...c, current, isActive, studioNames };
   });
 
   let filtered = withCurrent.filter((c) => {
@@ -115,8 +116,12 @@ export default async function CustomersPage({
       const haystack = `${c.name} ${c.email} ${c.phone ?? ""}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
-    if (studioFilter === "none" && c.locationId) return false;
-    if (studioFilter && studioFilter !== "none" && c.locationId !== Number(studioFilter)) {
+    if (studioFilter === "none" && c.locations.length > 0) return false;
+    if (
+      studioFilter &&
+      studioFilter !== "none" &&
+      !c.locations.some((l) => l.locationId === Number(studioFilter))
+    ) {
       return false;
     }
     if (membershipFilter === "active" && !c.isActive) return false;
@@ -135,7 +140,7 @@ export default async function CustomersPage({
   const cmp: Record<SortField, (a: (typeof withCurrent)[number], b: (typeof withCurrent)[number]) => number> = {
     name: (a, b) => a.name.localeCompare(b.name),
     contact: (a, b) => a.email.localeCompare(b.email),
-    studio: (a, b) => (a.location?.name ?? "").localeCompare(b.location?.name ?? ""),
+    studio: (a, b) => a.studioNames.localeCompare(b.studioNames),
     membership: (a, b) => (a.current?.package.name ?? "").localeCompare(b.current?.package.name ?? ""),
     start: (a, b) => (a.current?.startsAt.getTime() ?? 0) - (b.current?.startsAt.getTime() ?? 0),
     end: (a, b) => (a.current?.endsAt.getTime() ?? 0) - (b.current?.endsAt.getTime() ?? 0),
@@ -215,7 +220,7 @@ export default async function CustomersPage({
                   <div>{c.email}</div>
                   <div className="text-xs text-ink/40">{c.phone || "—"}</div>
                 </td>
-                <td className="px-5 py-3 text-ink/60">{c.location?.name || "—"}</td>
+                <td className="px-5 py-3 text-ink/60">{c.studioNames || "—"}</td>
                 <td className="px-5 py-3">
                   {c.current ? (
                     <>

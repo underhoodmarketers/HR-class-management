@@ -41,18 +41,16 @@ export function SignupForm({
           <label className="label" htmlFor="dob">Date of birth</label>
           <input id="dob" name="dob" type="date" required className="input" />
         </div>
-        <div>
-          <label className="label" htmlFor="locationId">Preferred studio</label>
-          <select id="locationId" name="locationId" required defaultValue="" className="input">
-            <option value="" disabled>
-              Choose a studio
-            </option>
+        <div className="sm:col-span-2">
+          <label className="label">Preferred studio(s)</label>
+          <div className="flex flex-wrap gap-3 rounded-xl border border-ink/10 p-3">
             {studios.map((s) => (
-              <option key={s.id} value={s.id}>
+              <label key={s.id} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" name="locationIds" value={s.id} />
                 {s.name}
-              </option>
+              </label>
             ))}
-          </select>
+          </div>
         </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="instagram">Instagram <span className="font-400 text-ink/40">(optional)</span></label>
