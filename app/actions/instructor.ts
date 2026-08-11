@@ -14,8 +14,8 @@ import { sendBulkEmail, sendSingleEmail } from "@/lib/email";
  * during class. Only allowed for classes the instructor can actually see:
  * their assigned studio(s), and — if the class has a specific instructor
  * assigned — only that instructor. Otherwise mirrors adminBookClass: doesn't
- * require the customer's package to cover this studio, and still books them
- * with zero credits (just skips the deduction).
+ * require the customer's package to cover this studio, and if they have no
+ * package or no remaining credits, it goes on their tab (creditsOwed).
  */
 export async function instructorBookClass(formData: FormData) {
   const session = await requireInstructor();
@@ -53,24 +53,35 @@ export async function instructorBookClass(formData: FormData) {
   const membershipId = active?.membership.id ?? null;
 
   // If the active membership's own credits are exhausted, borrow from the
-  // makeup pool instead of skipping the deduction entirely.
+  // makeup pool. No active membership, or an exhausted one with no makeup
+  // credits either, goes on the customer's tab (repaid on their next
+  // real purchase — see applyOwedCredits).
   let fromMakeupCredit = false;
+  let fromOwedCredit = false;
   if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { makeupCredits: true },
     });
     fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
+    fromOwedCredit = !fromMakeupCredit;
+  } else if (!active) {
+    fromOwedCredit = true;
   }
 
   await db
     .insert(bookings)
-    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit, fromOwedCredit });
 
   if (fromMakeupCredit) {
     await db
       .update(users)
       .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
+      .where(eq(users.id, userId));
+  } else if (fromOwedCredit) {
+    await db
+      .update(users)
+      .set({ creditsOwed: sql`${users.creditsOwed} + 1` })
       .where(eq(users.id, userId));
   } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db

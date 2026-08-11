@@ -97,18 +97,30 @@ function usageSummary(membership: Membership) {
   return { totalWeeks, weeksUsed, weeksLeft, creditsUsed };
 }
 
+function OwedBanner({ creditsOwed }: { creditsOwed: number }) {
+  if (creditsOwed <= 0) return null;
+  return (
+    <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+      Owes {creditsOwed} credit{creditsOwed === 1 ? "" : "s"} from classes checked
+      in with no package — subtracted automatically from their next purchase.
+    </p>
+  );
+}
+
 export default function MembershipCard({
   customerId,
   membership,
   packages,
   attendedInPackage,
   totalAttended,
+  creditsOwed,
 }: {
   customerId: number;
   membership: Membership | null;
   packages: PackageOption[];
   attendedInPackage: number;
   totalAttended: number;
+  creditsOwed: number;
 }) {
   const [mode, setMode] = useState<null | "edit" | "create">(null);
   const todayKey = studioDateKey(new Date());
@@ -150,6 +162,7 @@ export default function MembershipCard({
             Add membership
           </button>
         </div>
+        <OwedBanner creditsOwed={creditsOwed} />
         <p className="text-sm text-ink/40">No membership yet.</p>
       </div>
     );
@@ -224,6 +237,7 @@ export default function MembershipCard({
           </button>
         </div>
       </div>
+      <OwedBanner creditsOwed={creditsOwed} />
       <dl className="space-y-2 text-sm">
         <div><dt className="text-ink/40">Package</dt><dd>{membership.packageName}</dd></div>
         <div>

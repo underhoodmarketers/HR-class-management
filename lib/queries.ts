@@ -65,3 +65,38 @@ export async function rolloverUnusedCredits(userId: number): Promise<void> {
       )
     );
 }
+
+/**
+ * Repays any classes the customer was checked into with no package or no
+ * remaining credits (users.creditsOwed) out of a freshly granted batch of
+ * credits, before that batch becomes the new membership's starting balance.
+ * Call this right before inserting a new membership for a REAL purchase
+ * (Stripe or Zelle) — admin-manual grants intentionally skip this so an
+ * admin's typed-in credit count isn't silently altered.
+ *
+ * Unlimited packages (credits === null) simply clear the debt, since there's
+ * no cap left to repay against.
+ */
+export async function applyOwedCredits(
+  userId: number,
+  credits: number | null
+): Promise<number | null> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { creditsOwed: true },
+  });
+  const owed = user?.creditsOwed ?? 0;
+  if (owed <= 0) return credits;
+
+  if (credits === null) {
+    await db.update(users).set({ creditsOwed: 0 }).where(eq(users.id, userId));
+    return credits;
+  }
+
+  const applied = Math.min(owed, credits);
+  await db
+    .update(users)
+    .set({ creditsOwed: sql`${users.creditsOwed} - ${applied}` })
+    .where(eq(users.id, userId));
+  return credits - applied;
+}

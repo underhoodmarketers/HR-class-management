@@ -27,7 +27,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
-import { getActiveMembership, rolloverUnusedCredits } from "@/lib/queries";
+import { getActiveMembership, rolloverUnusedCredits, applyOwedCredits } from "@/lib/queries";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -68,7 +68,7 @@ async function refundBookingsForSessions(sessionIds: number[]) {
   );
 
   // Refund membership credits — only for bookings that didn't draw from
-  // the makeup pool.
+  // the makeup pool or go on the customer's tab.
   await db.execute(sql`
     UPDATE memberships m
     SET credits_remaining = m.credits_remaining + sub.refunds
@@ -79,6 +79,7 @@ async function refundBookingsForSessions(sessionIds: number[]) {
         AND status = 'booked'
         AND membership_id IS NOT NULL
         AND from_makeup_credit = false
+        AND from_owed_credit = false
       GROUP BY membership_id
     ) sub
     WHERE m.id = sub.membership_id
@@ -95,6 +96,22 @@ async function refundBookingsForSessions(sessionIds: number[]) {
       WHERE session_id IN (${sessionIdList})
         AND status = 'booked'
         AND from_makeup_credit = true
+      GROUP BY user_id
+    ) sub
+    WHERE u.id = sub.user_id
+  `);
+
+  // Clear the "owed" debt for bookings that went on the customer's tab —
+  // clamped at 0 in case a purchase already repaid it since.
+  await db.execute(sql`
+    UPDATE users u
+    SET credits_owed = GREATEST(0, u.credits_owed - sub.refunds)
+    FROM (
+      SELECT user_id, COUNT(*)::int AS refunds
+      FROM bookings
+      WHERE session_id IN (${sessionIdList})
+        AND status = 'booked'
+        AND from_owed_credit = true
       GROUP BY user_id
     ) sub
     WHERE u.id = sub.user_id
@@ -339,24 +356,35 @@ export async function adminBookClass(formData: FormData) {
   const membershipId = active?.membership.id ?? null;
 
   // If the active membership's own credits are exhausted, borrow from the
-  // makeup pool instead of skipping the deduction entirely.
+  // makeup pool. No active membership, or an exhausted one with no makeup
+  // credits either, means this class goes on the customer's tab — it gets
+  // repaid out of their next real package purchase.
   let fromMakeupCredit = false;
+  let fromOwedCredit = false;
   if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { makeupCredits: true },
     });
     fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
+    fromOwedCredit = !fromMakeupCredit;
+  } else if (!active) {
+    fromOwedCredit = true;
   }
 
   await db
     .insert(bookings)
-    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit });
+    .values({ userId, sessionId, membershipId, status: "booked", fromMakeupCredit, fromOwedCredit });
 
   if (fromMakeupCredit) {
     await db
       .update(users)
       .set({ makeupCredits: sql`${users.makeupCredits} - 1` })
+      .where(eq(users.id, userId));
+  } else if (fromOwedCredit) {
+    await db
+      .update(users)
+      .set({ creditsOwed: sql`${users.creditsOwed} + 1` })
       .where(eq(users.id, userId));
   } else if (active && active.membership.creditsRemaining !== null && active.membership.creditsRemaining > 0) {
     await db
@@ -368,6 +396,7 @@ export async function adminBookClass(formData: FormData) {
   revalidatePath("/admin/calendar");
   revalidatePath(`/admin/calendar/session/${sessionId}`);
   revalidatePath("/admin");
+  revalidatePath(`/admin/customers/${userId}`);
 }
 
 export async function cancelSession(formData: FormData) {
@@ -1067,13 +1096,14 @@ export async function approveZellePayment(formData: FormData) {
     startsAt.getTime() + (request.package.durationDays - 1) * 24 * 60 * 60 * 1000
   );
   await rolloverUnusedCredits(request.userId);
+  const creditsRemaining = await applyOwedCredits(request.userId, request.package.credits);
   const [membership] = await db
     .insert(memberships)
     .values({
       userId: request.userId,
       packageId: request.packageId,
       status: "active",
-      creditsRemaining: request.package.credits,
+      creditsRemaining,
       startsAt,
       endsAt,
       billingType: "zelle",

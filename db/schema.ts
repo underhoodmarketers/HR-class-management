@@ -32,6 +32,10 @@ export const users = pgTable("users", {
   // package when a new one is bought. Never expire; drawn on only once a
   // membership's own per-cycle credits are exhausted.
   makeupCredits: integer("makeup_credits").notNull().default(0),
+  // Classes an admin checked this customer into while they had no package
+  // or no remaining credits. Repaid automatically out of the credits granted
+  // by their next real purchase (see applyOwedCredits in lib/queries.ts).
+  creditsOwed: integer("credits_owed").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -173,6 +177,10 @@ export const bookings = pgTable(
     // credit pool (membershipId's own credits were exhausted at booking
     // time) — determines where a cancellation refund goes.
     fromMakeupCredit: boolean("from_makeup_credit").notNull().default(false),
+    // True when this booking was checked in by an admin with no package or
+    // no remaining credits at all — added to the customer's creditsOwed
+    // instead of deducting anything, so a cancellation refund restores it.
+    fromOwedCredit: boolean("from_owed_credit").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ uniq: index("bookings_user_session_idx").on(t.userId, t.sessionId) })

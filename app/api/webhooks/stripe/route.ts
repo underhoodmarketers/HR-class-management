@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { db } from "@/db";
 import { memberships, packages, users } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
-import { rolloverUnusedCredits } from "@/lib/queries";
+import { rolloverUnusedCredits, applyOwedCredits } from "@/lib/queries";
 import { sendPackagePurchaseEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
@@ -68,11 +68,12 @@ export async function POST(req: NextRequest) {
             startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
           );
           await rolloverUnusedCredits(userId);
+          const creditsRemaining = await applyOwedCredits(userId, pkg.credits); // null = unlimited
           await db.insert(memberships).values({
             userId,
             packageId,
             status: "active",
-            creditsRemaining: pkg.credits, // null = unlimited
+            creditsRemaining,
             startsAt,
             endsAt,
             stripeSessionId: checkout.id,
@@ -116,11 +117,12 @@ export async function POST(req: NextRequest) {
               startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
             );
             await rolloverUnusedCredits(userId);
+            const creditsRemaining = await applyOwedCredits(userId, pkg.credits);
             await db.insert(memberships).values({
               userId,
               packageId,
               status: "active",
-              creditsRemaining: pkg.credits,
+              creditsRemaining,
               startsAt,
               endsAt,
               stripeSessionId: invoice.id,

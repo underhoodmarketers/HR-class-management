@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, count, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, users } from "@/db/schema";
+import { classSessions, memberships, users } from "@/db/schema";
 import { formatDay, formatTime, studioDateKey } from "@/lib/utils";
 import AddCustomerToClass from "@/components/AddCustomerToClass";
 import SessionRosterTabs from "@/components/SessionRosterTabs";
@@ -17,7 +17,9 @@ export default async function SessionDetailPage({
   const sessionId = Number(params.id);
   if (!sessionId) notFound();
 
-  const [session, customers] = await Promise.all([
+  const now = new Date();
+
+  const [session, customers, activeMembershipRows] = await Promise.all([
     db.query.classSessions.findFirst({
       where: eq(classSessions.id, sessionId),
       with: {
@@ -29,11 +31,36 @@ export default async function SessionDetailPage({
     }),
     db.query.users.findMany({
       where: eq(users.role, "customer"),
+      columns: { id: true, name: true, makeupCredits: true },
       orderBy: (u, { asc }) => [asc(u.name)],
+    }),
+    db.query.memberships.findMany({
+      where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
+      columns: { userId: true, creditsRemaining: true },
+      orderBy: [desc(memberships.endsAt)],
     }),
   ]);
 
   if (!session) notFound();
+
+  // Latest-ending active membership per customer — mirrors getActiveMembership.
+  const activeByUser = new Map<number, { creditsRemaining: number | null }>();
+  for (const m of activeMembershipRows) {
+    if (!activeByUser.has(m.userId)) {
+      activeByUser.set(m.userId, { creditsRemaining: m.creditsRemaining });
+    }
+  }
+  const hasCreditsByUser = new Map<number, boolean>(
+    customers.map((c) => {
+      const active = activeByUser.get(c.id);
+      const hasCredits = active
+        ? active.creditsRemaining === null ||
+          active.creditsRemaining > 0 ||
+          c.makeupCredits > 0
+        : false;
+      return [c.id, hasCredits];
+    })
+  );
 
   let seriesRemaining = 0;
   if (session.seriesId) {
@@ -58,6 +85,7 @@ export default async function SessionDetailPage({
     contact: b.user.phone || b.user.email,
     packageName: b.membership?.package.name ?? null,
     signedUpAt: b.createdAt,
+    owesCredit: b.fromOwedCredit,
   });
   const roster = activeBookings.map(toRosterEntry);
   const cancelledRoster = cancelledBookings.map(toRosterEntry);
@@ -141,7 +169,11 @@ export default async function SessionDetailPage({
           <h2 className="mb-4 font-600">Add customer into this class</h2>
           <AddCustomerToClass
             sessionId={session.id}
-            customers={bookableCustomers.map((c) => ({ id: c.id, name: c.name }))}
+            customers={bookableCustomers.map((c) => ({
+              id: c.id,
+              name: c.name,
+              hasCredits: hasCreditsByUser.get(c.id) ?? false,
+            }))}
             full={activeBookings.length >= session.capacity}
           />
         </div>

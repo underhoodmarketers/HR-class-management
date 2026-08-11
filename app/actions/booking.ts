@@ -113,6 +113,11 @@ export async function cancelBooking(formData: FormData) {
       .update(users)
       .set({ makeupCredits: sql`${users.makeupCredits} + 1` })
       .where(eq(users.id, session.userId));
+  } else if (booking.fromOwedCredit) {
+    await db
+      .update(users)
+      .set({ creditsOwed: sql`GREATEST(0, ${users.creditsOwed} - 1)` })
+      .where(eq(users.id, session.userId));
   } else if (booking.membershipId) {
     await db
       .update(memberships)

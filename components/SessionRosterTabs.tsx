@@ -9,6 +9,7 @@ type RosterEntry = {
   contact: string;
   packageName: string | null;
   signedUpAt: Date;
+  owesCredit: boolean;
 };
 
 function formatSignedUpAt(d: Date) {
@@ -91,6 +92,11 @@ export default function SessionRosterTabs({
                 {r.packageName ? (
                   <span className="rounded-full bg-blush px-2 py-0.5 text-[11px] text-magenta-deep">
                     {r.packageName}
+                  </span>
+                ) : null}
+                {r.owesCredit ? (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700">
+                    Owes 1 credit
                   </span>
                 ) : null}
               </div>

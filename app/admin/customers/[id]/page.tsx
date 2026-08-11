@@ -208,6 +208,7 @@ export default async function CustomerDetail({
           }))}
           attendedInPackage={attendedInPackage}
           totalAttended={totalAttended}
+          creditsOwed={customer.creditsOwed}
         />
       </div>
 
