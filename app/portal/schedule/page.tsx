@@ -27,15 +27,18 @@ export default async function SchedulePage() {
 
   const { membership, allowedLocationIds } = active;
   const now = new Date();
+  // A class stays bookable until 30 minutes after it ends, not just until
+  // it starts — covers walk-ins and last-minute bookings during class.
+  const cutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
   const where =
     allowedLocationIds.length > 0
       ? and(
-          gte(classSessions.startsAt, now),
+          gte(classSessions.endsAt, cutoff),
           eq(classSessions.canceled, false),
           inArray(classSessions.locationId, allowedLocationIds)
         )
-      : and(gte(classSessions.startsAt, now), eq(classSessions.canceled, false));
+      : and(gte(classSessions.endsAt, cutoff), eq(classSessions.canceled, false));
 
   const sessions = await db.query.classSessions.findMany({
     where,
