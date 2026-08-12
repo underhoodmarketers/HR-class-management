@@ -166,7 +166,7 @@ export default function SessionRow({
       : "nobody booked";
 
   return (
-    <div className="flex items-start justify-between gap-3 p-4">
+    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
       <Link
         href={`/admin/calendar/session/${session.id}`}
         target="_blank"
@@ -196,7 +196,7 @@ export default function SessionRow({
         </div>
       </Link>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
         <Link
           href={`/admin/calendar/session/${session.id}`}
           target="_blank"
