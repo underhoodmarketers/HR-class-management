@@ -43,29 +43,35 @@ export default async function InstructorDashboardPage({
   const hasLocations = myLocationIds.length > 0;
   const locationFilter = hasLocations ? myLocationIds : [-1];
 
+  // A class assigned specifically to this instructor is visible to them no
+  // matter which studio it's at. Otherwise, an unassigned class is visible
+  // to any instructor at that studio.
   const visibleToMe = or(
-    isNull(classSessions.assignedInstructorId),
-    eq(classSessions.assignedInstructorId, session.userId)
+    eq(classSessions.assignedInstructorId, session.userId),
+    and(
+      inArray(classSessions.locationId, locationFilter),
+      isNull(classSessions.assignedInstructorId)
+    )
   );
 
-  const [customers, upcomingSessions] = await Promise.all([
+  const [customers, upcomingSessions, hasAssignedClass] = await Promise.all([
     db.query.users.findMany({
       where: eq(users.role, "customer"),
       with: { memberships: { with: { package: true } }, locations: true },
       orderBy: (u, { asc }) => [asc(u.name)],
     }),
     db.query.classSessions.findMany({
-      where: and(
-        inArray(classSessions.locationId, locationFilter),
-        visibleToMe,
-        gt(classSessions.startsAt, now),
-        eq(classSessions.canceled, false)
-      ),
+      where: and(visibleToMe, gt(classSessions.startsAt, now), eq(classSessions.canceled, false)),
       with: { classType: true, location: true, bookings: { with: { user: true } } },
       orderBy: [classSessions.startsAt],
     }),
+    db.query.classSessions.findFirst({
+      where: eq(classSessions.assignedInstructorId, session.userId),
+      columns: { id: true },
+    }),
   ]);
 
+  const canSeeSchedule = hasLocations || Boolean(hasAssignedClass);
   const upNext = upcomingSessions[0] ?? null;
 
   // A customer is "yours" if any of their preferred studios is one you're assigned to.
@@ -115,7 +121,7 @@ export default async function InstructorDashboardPage({
         </div>
       ) : null}
 
-      {!hasLocations ? (
+      {!canSeeSchedule ? (
         <div className="card p-6 text-sm text-ink/50">
           You&apos;re not assigned to a studio yet. Ask an admin to assign one.
         </div>

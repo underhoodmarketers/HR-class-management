@@ -57,55 +57,55 @@ export default async function InstructorSchedulePage({
   // branching — keeps TypeScript's inference simple and the code shorter.
   const locationFilter = hasLocations ? myLocationIds : [-1];
 
-  // A class with no specific instructor assigned is visible to any
-  // instructor at that studio; otherwise it's visible only to the assignee.
+  // A class assigned specifically to this instructor is visible to them no
+  // matter which studio it's at. Otherwise, an unassigned class is visible
+  // to any instructor at that studio.
   const visibleToMe = or(
-    isNull(classSessions.assignedInstructorId),
-    eq(classSessions.assignedInstructorId, session.userId)
+    eq(classSessions.assignedInstructorId, session.userId),
+    and(
+      inArray(classSessions.locationId, locationFilter),
+      isNull(classSessions.assignedInstructorId)
+    )
   );
 
-  const [upNext, gridSessions, agendaSessions, customers, activeMembershipRows] = await Promise.all([
-    db.query.classSessions.findFirst({
-      where: and(
-        inArray(classSessions.locationId, locationFilter),
-        visibleToMe,
-        gt(classSessions.startsAt, now),
-        eq(classSessions.canceled, false)
-      ),
-      with: { classType: true, location: true, bookings: { with: { user: true } } },
-      orderBy: [classSessions.startsAt],
-    }),
-    db.query.classSessions.findMany({
-      where: and(
-        inArray(classSessions.locationId, locationFilter),
-        visibleToMe,
-        gte(classSessions.startsAt, gridStart),
-        lt(classSessions.startsAt, gridEnd)
-      ),
-      with: { classType: true },
-      orderBy: [classSessions.startsAt],
-    }),
-    db.query.classSessions.findMany({
-      where: and(
-        inArray(classSessions.locationId, locationFilter),
-        visibleToMe,
-        gte(classSessions.startsAt, dayStart),
-        lt(classSessions.startsAt, dayEnd)
-      ),
-      with: { classType: true, location: true, bookings: { with: { user: true } } },
-      orderBy: [classSessions.startsAt],
-    }),
-    db.query.users.findMany({
-      where: eq(users.role, "customer"),
-      with: { locations: true },
-      orderBy: (u, { asc }) => [asc(u.name)],
-    }),
-    db.query.memberships.findMany({
-      where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
-      columns: { userId: true, creditsRemaining: true },
-      orderBy: [desc(memberships.endsAt)],
-    }),
-  ]);
+  const [upNext, gridSessions, agendaSessions, customers, activeMembershipRows, hasAssignedClass] =
+    await Promise.all([
+      db.query.classSessions.findFirst({
+        where: and(visibleToMe, gt(classSessions.startsAt, now), eq(classSessions.canceled, false)),
+        with: { classType: true, location: true, bookings: { with: { user: true } } },
+        orderBy: [classSessions.startsAt],
+      }),
+      db.query.classSessions.findMany({
+        where: and(
+          visibleToMe,
+          gte(classSessions.startsAt, gridStart),
+          lt(classSessions.startsAt, gridEnd)
+        ),
+        with: { classType: true },
+        orderBy: [classSessions.startsAt],
+      }),
+      db.query.classSessions.findMany({
+        where: and(visibleToMe, gte(classSessions.startsAt, dayStart), lt(classSessions.startsAt, dayEnd)),
+        with: { classType: true, location: true, bookings: { with: { user: true } } },
+        orderBy: [classSessions.startsAt],
+      }),
+      db.query.users.findMany({
+        where: eq(users.role, "customer"),
+        with: { locations: true },
+        orderBy: (u, { asc }) => [asc(u.name)],
+      }),
+      db.query.memberships.findMany({
+        where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
+        columns: { userId: true, creditsRemaining: true },
+        orderBy: [desc(memberships.endsAt)],
+      }),
+      db.query.classSessions.findFirst({
+        where: eq(classSessions.assignedInstructorId, session.userId),
+        columns: { id: true },
+      }),
+    ]);
+
+  const canSeeSchedule = hasLocations || Boolean(hasAssignedClass);
 
   const myLocationIdSet = new Set(myLocationIds);
   const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
@@ -144,7 +144,7 @@ export default async function InstructorSchedulePage({
         <p className="text-sm text-ink/50">Upcoming classes and who&apos;s booked in.</p>
       </div>
 
-      {!hasLocations ? (
+      {!canSeeSchedule ? (
         <div className="card p-6 text-sm text-ink/50">
           You&apos;re not assigned to a studio yet. Ask an admin to assign one.
         </div>

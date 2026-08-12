@@ -33,13 +33,10 @@ export async function instructorBookClass(formData: FormData) {
     with: { bookings: true },
   });
   if (!classSession || classSession.canceled) return;
-  if (!myLocationIds.has(classSession.locationId)) return;
-  if (
-    classSession.assignedInstructorId &&
-    classSession.assignedInstructorId !== session.userId
-  ) {
-    return;
-  }
+  // Assigned to me, anywhere — or unassigned, at my own studio.
+  const isAssignedToMe = classSession.assignedInstructorId === session.userId;
+  const isVisible = isAssignedToMe || (myLocationIds.has(classSession.locationId) && !classSession.assignedInstructorId);
+  if (!isVisible) return;
 
   const alreadyBooked = classSession.bookings.some(
     (b) => b.userId === userId && b.status === "booked"
@@ -107,13 +104,11 @@ export async function instructorCancelBooking(formData: FormData) {
     where: eq(instructorLocations.userId, session.userId),
   });
   const myLocationIds = new Set(myLocations.map((l) => l.locationId));
-  if (!myLocationIds.has(booking.session.locationId)) return;
-  if (
-    booking.session.assignedInstructorId &&
-    booking.session.assignedInstructorId !== session.userId
-  ) {
-    return;
-  }
+  // Assigned to me, anywhere — or unassigned, at my own studio.
+  const isAssignedToMe = booking.session.assignedInstructorId === session.userId;
+  const isVisible =
+    isAssignedToMe || (myLocationIds.has(booking.session.locationId) && !booking.session.assignedInstructorId);
+  if (!isVisible) return;
 
   await db.update(bookings).set({ status: "canceled" }).where(eq(bookings.id, bookingId));
 
