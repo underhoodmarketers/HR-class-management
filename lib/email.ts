@@ -114,3 +114,47 @@ export async function sendPackagePurchaseEmail(
     `,
   });
 }
+
+export async function sendMembershipReminderEmail(
+  to: string,
+  details: { name: string; packageName: string; endsAt: string; portalUrl: string }
+) {
+  if (!emailConfigured()) {
+    console.warn(`RESEND_API_KEY not set — skipped expiry reminder email to ${to}`);
+    return;
+  }
+  const { name, packageName, endsAt, portalUrl } = details;
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your ${packageName} package expires in 7 days`,
+    html: `
+      <p>Hi ${name},</p>
+      <p>Just a heads up — your <strong>${packageName}</strong> package expires on <strong>${endsAt}</strong>, one week from today.</p>
+      <p><a href="${portalUrl}">Renew your package</a> to keep booking classes without a gap.</p>
+      <p>See you in class!</p>
+    `,
+  });
+}
+
+export async function sendMembershipExpiredEmail(
+  to: string,
+  details: { name: string; packageName: string; portalUrl: string }
+) {
+  if (!emailConfigured()) {
+    console.warn(`RESEND_API_KEY not set — skipped expired email to ${to}`);
+    return;
+  }
+  const { name, packageName, portalUrl } = details;
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `Your ${packageName} package has expired`,
+    html: `
+      <p>Hi ${name},</p>
+      <p>Your <strong>${packageName}</strong> package expires today, so you won't be able to book new classes until you renew.</p>
+      <p><a href="${portalUrl}">Renew your package</a> to keep dancing with us.</p>
+      <p>Hope to see you back soon!</p>
+    `,
+  });
+}

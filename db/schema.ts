@@ -167,6 +167,10 @@ export const memberships = pgTable("memberships", {
   // Set once an admin issues a $20-off promo code converting this trial
   // (Drop-In) booking into credit toward a real package — null until then.
   trialCreditCode: varchar("trial_credit_code", { length: 50 }),
+  // Set once the "expires in 7 days" / "expires today" emails go out, so the
+  // daily cron never sends either one twice for the same membership.
+  expiryReminderSentAt: timestamp("expiry_reminder_sent_at", { withTimezone: true }),
+  expiredEmailSentAt: timestamp("expired_email_sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
