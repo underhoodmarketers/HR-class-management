@@ -137,9 +137,23 @@ export default function PromoCodeForm({
           <input type="date" name="expiresAt" className="input" />
         </div>
         <div>
-          <label className="label">Max uses (optional)</label>
+          <label className="label">Max total uses (optional)</label>
           <input type="number" name="maxRedemptions" min={1} className="input" placeholder="Unlimited" />
         </div>
+      </div>
+
+      <div>
+        <label className="label">Max uses per customer (optional)</label>
+        <input
+          type="number"
+          name="maxUsesPerCustomer"
+          min={1}
+          className="input"
+          placeholder="Unlimited"
+        />
+        <p className="mt-1.5 text-xs text-ink/40">
+          How many times the same customer can redeem this code — separate from the total-uses pool above.
+        </p>
       </div>
 
       <div className="border-t border-ink/10 pt-4">

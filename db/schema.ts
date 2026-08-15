@@ -323,7 +323,28 @@ export const promoCodes = pgTable("promo_codes", {
   code: varchar("code", { length: 50 }).notNull().unique(),
   stripeCouponId: varchar("stripe_coupon_id", { length: 255 }).notNull(),
   stripePromotionCodeId: varchar("stripe_promotion_code_id", { length: 255 }).notNull(),
+  // How many times ONE customer may redeem this code — separate from
+  // Stripe's own max_redemptions, which is a total pool shared across
+  // everyone. Null = no per-customer limit.
+  maxUsesPerCustomer: integer("max_uses_per_customer"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per successful checkout that applied a promo code — only the
+// initial redemption, not each autopay renewal invoice — so per-customer
+// usage can be enforced (Stripe has no concept of this).
+export const promoCodeRedemptions = pgTable("promo_code_redemptions", {
+  id: serial("id").primaryKey(),
+  promoCodeId: integer("promo_code_id")
+    .notNull()
+    .references(() => promoCodes.id, { onDelete: "cascade" }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  membershipId: integer("membership_id").references(() => memberships.id, {
+    onDelete: "set null",
+  }),
+  redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const promoCodePackages = pgTable(
@@ -392,6 +413,15 @@ export const promoCodesRelations = relations(promoCodes, ({ many }) => ({
   packages: many(promoCodePackages),
   customers: many(promoCodeCustomers),
   locations: many(promoCodeLocations),
+  redemptions: many(promoCodeRedemptions),
+}));
+
+export const promoCodeRedemptionsRelations = relations(promoCodeRedemptions, ({ one }) => ({
+  promoCode: one(promoCodes, {
+    fields: [promoCodeRedemptions.promoCodeId],
+    references: [promoCodes.id],
+  }),
+  user: one(users, { fields: [promoCodeRedemptions.userId], references: [users.id] }),
 }));
 
 export const promoCodePackagesRelations = relations(promoCodePackages, ({ one }) => ({

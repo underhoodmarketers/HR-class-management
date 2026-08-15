@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "@/db";
-import { memberships, packages, users } from "@/db/schema";
+import { memberships, packages, promoCodeRedemptions, users } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
 import { rolloverUnusedCredits, applyOwedCredits } from "@/lib/queries";
 import { sendPackagePurchaseEmail } from "@/lib/email";
@@ -69,18 +69,33 @@ export async function POST(req: NextRequest) {
           );
           await rolloverUnusedCredits(userId);
           const creditsRemaining = await applyOwedCredits(userId, pkg.credits); // null = unlimited
-          await db.insert(memberships).values({
-            userId,
-            packageId,
-            status: "active",
-            creditsRemaining,
-            startsAt,
-            endsAt,
-            stripeSessionId: checkout.id,
-            stripeSubscriptionId:
-              typeof checkout.subscription === "string" ? checkout.subscription : null,
-            billingType,
-          });
+          const [membership] = await db
+            .insert(memberships)
+            .values({
+              userId,
+              packageId,
+              status: "active",
+              creditsRemaining,
+              startsAt,
+              endsAt,
+              stripeSessionId: checkout.id,
+              stripeSubscriptionId:
+                typeof checkout.subscription === "string" ? checkout.subscription : null,
+              billingType,
+            })
+            .returning();
+
+          // Only the initial checkout counts as a redemption — autopay
+          // renewals reapply the same discount automatically, not a new use.
+          const promoCodeId = Number(checkout.metadata?.promoCodeId);
+          if (promoCodeId) {
+            await db.insert(promoCodeRedemptions).values({
+              promoCodeId,
+              userId,
+              membershipId: membership.id,
+            });
+          }
+
           await notifyPurchase(userId, pkg);
         }
       }

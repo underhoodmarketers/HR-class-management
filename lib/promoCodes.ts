@@ -1,21 +1,25 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { promoCodes } from "@/db/schema";
+import { promoCodes, promoCodeRedemptions } from "@/db/schema";
 import { stripe } from "./stripe";
 import { formatMoney } from "./utils";
 
 /**
  * Validates a promo code against restrictions Stripe has no concept of
- * (package/customer/location are all app-specific). The actual coupon
- * terms and redemption limits still live in Stripe — checkout applies the
- * discount via the promotion code id (not the raw coupon id) so Stripe
- * enforces its own active/expiry/max-redemptions rules natively.
+ * (package/customer/location/per-customer-use-count are all app-specific).
+ * The actual coupon terms and total redemption pool still live in Stripe —
+ * checkout applies the discount via the promotion code id (not the raw
+ * coupon id) so Stripe enforces its own active/expiry/max-redemptions rules
+ * natively.
  */
 export async function resolvePromoCode(
   rawCode: string,
   ctx: { userId: number; packageId: number; locationIds: number[] }
-): Promise<{ ok: true; stripePromotionCodeId: string; label: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; promoCodeId: number; stripePromotionCodeId: string; label: string }
+  | { ok: false; error: string }
+> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a promo code." };
 
@@ -38,6 +42,18 @@ export async function resolvePromoCode(
     return { ok: false, error: "That code isn't valid for your studio." };
   }
 
+  if (promo.maxUsesPerCustomer !== null) {
+    const [{ value: usedCount }] = await db
+      .select({ value: count() })
+      .from(promoCodeRedemptions)
+      .where(
+        and(eq(promoCodeRedemptions.promoCodeId, promo.id), eq(promoCodeRedemptions.userId, ctx.userId))
+      );
+    if (usedCount >= promo.maxUsesPerCustomer) {
+      return { ok: false, error: "You've already used this code the maximum number of times." };
+    }
+  }
+
   let promotionCode;
   try {
     promotionCode = await stripe.promotionCodes.retrieve(promo.stripePromotionCodeId);
@@ -57,5 +73,5 @@ export async function resolvePromoCode(
       ? `${formatMoney(coupon.amount_off)} off`
       : "Discount applied";
 
-  return { ok: true, stripePromotionCodeId: promo.stripePromotionCodeId, label };
+  return { ok: true, promoCodeId: promo.id, stripePromotionCodeId: promo.stripePromotionCodeId, label };
 }

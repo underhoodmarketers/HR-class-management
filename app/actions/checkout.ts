@@ -60,6 +60,7 @@ export async function createEmbeddedCheckout(
   }
 
   let discounts: { promotion_code: string }[] | undefined;
+  let appliedPromoCodeId: number | null = null;
   if (promoCode) {
     const user = await db.query.users.findFirst({
       where: eq(users.id, session.userId),
@@ -72,6 +73,7 @@ export async function createEmbeddedCheckout(
     });
     if (!result.ok) return { error: result.error };
     discounts = [{ promotion_code: result.stripePromotionCodeId }];
+    appliedPromoCodeId = result.promoCodeId;
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
@@ -79,6 +81,7 @@ export async function createEmbeddedCheckout(
     userId: String(session.userId),
     packageId: String(pkg.id),
     billingType,
+    ...(appliedPromoCodeId ? { promoCodeId: String(appliedPromoCodeId) } : {}),
   };
 
   const checkout = await stripe.checkout.sessions.create(

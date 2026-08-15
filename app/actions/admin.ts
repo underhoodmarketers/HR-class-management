@@ -651,12 +651,15 @@ export async function createPromoCode(formData: FormData) {
   const durationMonths = Number(formData.get("durationMonths") || 0);
   const expiresAtValue = String(formData.get("expiresAt") || "");
   const maxRedemptions = Number(formData.get("maxRedemptions") || 0);
+  const maxUsesPerCustomerRaw = String(formData.get("maxUsesPerCustomer") || "").trim();
+  const maxUsesPerCustomer = maxUsesPerCustomerRaw ? Number(maxUsesPerCustomerRaw) : null;
 
   const invalid =
     !code ||
     (discountType === "percent" && (!percentOff || percentOff <= 0 || percentOff > 100)) ||
     (discountType === "amount" && (!amountOff || amountOff <= 0)) ||
-    (duration === "repeating" && (!durationMonths || durationMonths < 1));
+    (duration === "repeating" && (!durationMonths || durationMonths < 1)) ||
+    (maxUsesPerCustomer !== null && (isNaN(maxUsesPerCustomer) || maxUsesPerCustomer < 1));
   if (invalid) {
     redirect("/admin/promo-codes?error=invalid");
   }
@@ -695,7 +698,7 @@ export async function createPromoCode(formData: FormData) {
 
   const [promoCode] = await db
     .insert(promoCodes)
-    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId })
+    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId, maxUsesPerCustomer })
     .returning();
 
   if (packageIds.length > 0) {
@@ -718,6 +721,28 @@ export async function togglePromoCode(formData: FormData) {
   const active = formData.get("active") === "true";
   if (!id) return;
   await stripe.promotionCodes.update(id, { active: !active });
+  revalidatePath("/admin/promo-codes");
+}
+
+/**
+ * Stripe has no real delete for promotion codes, only deactivation — so
+ * this deactivates it there (permanently unusable) and removes our own
+ * tracking row (restrictions, per-customer usage limit, redemption
+ * history). Only promo codes created through this app have a tracking row
+ * to delete; ones created directly in Stripe can still be deactivated via
+ * the toggle, just not "deleted" here.
+ */
+export async function deletePromoCode(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+
+  const promoCode = await db.query.promoCodes.findFirst({ where: eq(promoCodes.id, id) });
+  if (!promoCode) return;
+
+  await stripe.promotionCodes.update(promoCode.stripePromotionCodeId, { active: false });
+  await db.delete(promoCodes).where(eq(promoCodes.id, id));
+
   revalidatePath("/admin/promo-codes");
 }
 

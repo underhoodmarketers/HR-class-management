@@ -2,9 +2,10 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { locations, packages, users } from "@/db/schema";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { togglePromoCode } from "@/app/actions/admin";
+import { togglePromoCode, deletePromoCode } from "@/app/actions/admin";
 import { formatMoney } from "@/lib/utils";
 import PromoCodeForm from "@/components/PromoCodeForm";
+import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -69,10 +70,12 @@ export default async function PromoCodesPage({
     }),
   ]);
 
-  const restrictionsByPromotionCodeId = new Map(
+  const ourDataByPromotionCodeId = new Map(
     ourPromoCodes.map((p) => [
       p.stripePromotionCodeId,
       {
+        appId: p.id,
+        maxUsesPerCustomer: p.maxUsesPerCustomer,
         packages: p.packages.map((x) => x.package.name),
         locations: p.locations.map((x) => x.location.name),
         customers: p.customers.map((x) => x.user.name),
@@ -122,14 +125,17 @@ export default async function PromoCodesPage({
             ) : (
               codes.map((c) => {
                 const coupon = typeof c.coupon === "object" ? c.coupon : null;
-                const restrictions = restrictionsByPromotionCodeId.get(c.id);
+                const ours = ourDataByPromotionCodeId.get(c.id);
                 const restrictionParts = [
-                  restrictions?.packages.length ? `Packages: ${restrictions.packages.join(", ")}` : null,
-                  restrictions?.locations.length ? `Studios: ${restrictions.locations.join(", ")}` : null,
-                  restrictions?.customers.length ? `Customers: ${restrictions.customers.join(", ")}` : null,
+                  ours?.packages.length ? `Packages: ${ours.packages.join(", ")}` : null,
+                  ours?.locations.length ? `Studios: ${ours.locations.join(", ")}` : null,
+                  ours?.customers.length ? `Customers: ${ours.customers.join(", ")}` : null,
+                  ours?.maxUsesPerCustomer
+                    ? `Max ${ours.maxUsesPerCustomer} use${ours.maxUsesPerCustomer === 1 ? "" : "s"} per customer`
+                    : null,
                 ].filter(Boolean);
                 return (
-                  <div key={c.id} className="card flex items-center justify-between p-5">
+                  <div key={c.id} className="card flex items-center justify-between gap-3 p-5">
                     <div>
                       <p className="font-600">
                         {c.code}
@@ -155,13 +161,23 @@ export default async function PromoCodesPage({
                         <p className="mt-1 text-xs text-magenta-deep">{restrictionParts.join(" · ")}</p>
                       ) : null}
                     </div>
-                    <form action={togglePromoCode}>
-                      <input type="hidden" name="id" value={c.id} />
-                      <input type="hidden" name="active" value={String(c.active)} />
-                      <button className="btn-ghost px-4 py-2 text-xs">
-                        {c.active ? "Deactivate" : "Activate"}
-                      </button>
-                    </form>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <form action={togglePromoCode}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="active" value={String(c.active)} />
+                        <button className="btn-ghost px-4 py-2 text-xs">
+                          {c.active ? "Deactivate" : "Activate"}
+                        </button>
+                      </form>
+                      {ours ? (
+                        <ConfirmDeleteButton
+                          id={ours.appId}
+                          action={deletePromoCode}
+                          confirmText={`Delete ${c.code}?\n\nThis deactivates it in Stripe (it can't be un-deleted) and removes its restrictions and usage history from this app.`}
+                          className="rounded-full px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                        />
+                      ) : null}
+                    </div>
                   </div>
                 );
               })
