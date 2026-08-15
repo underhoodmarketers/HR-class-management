@@ -89,9 +89,9 @@ export default async function SessionDetailPage({
   });
   const roster = activeBookings.map(toRosterEntry);
   const cancelledRoster = cancelledBookings.map(toRosterEntry);
-  const bookableCustomers = customers.filter(
-    (c) => !roster.some((r) => r.userId === c.id)
-  );
+  // Admin can (with confirmation) book someone who's already in this class
+  // a second time, so the picker includes everyone, not just who's free.
+  const alreadyBookedUserIds = new Set(roster.map((r) => r.userId));
 
   const durationMin = Math.round(
     (session.endsAt.getTime() - session.startsAt.getTime()) / 60000
@@ -169,10 +169,11 @@ export default async function SessionDetailPage({
           <h2 className="mb-4 font-600">Add customer into this class</h2>
           <AddCustomerToClass
             sessionId={session.id}
-            customers={bookableCustomers.map((c) => ({
+            customers={customers.map((c) => ({
               id: c.id,
               name: c.name,
               hasCredits: hasCreditsByUser.get(c.id) ?? false,
+              alreadyBooked: alreadyBookedUserIds.has(c.id),
             }))}
             full={activeBookings.length >= session.capacity}
           />

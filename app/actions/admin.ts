@@ -345,10 +345,14 @@ export async function adminBookClass(formData: FormData) {
   });
   if (!classSession || classSession.canceled) return;
 
+  // Normally one booking per person per class — admin can override to book
+  // the same person twice (e.g. a genuine need for a second spot), but only
+  // after the UI has confirmed that with them.
+  const override = formData.get("override") === "true";
   const alreadyBooked = classSession.bookings.some(
     (b) => b.userId === userId && b.status === "booked"
   );
-  if (alreadyBooked) return;
+  if (alreadyBooked && !override) return;
 
   const bookedCount = classSession.bookings.filter((b) => b.status === "booked").length;
   if (bookedCount >= classSession.capacity) return;
