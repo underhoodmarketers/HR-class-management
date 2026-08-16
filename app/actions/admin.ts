@@ -982,9 +982,9 @@ export async function unfreezeMembership(formData: FormData) {
 }
 
 /**
- * Converts a same-day trial (Drop-In) booking into a $20-off promo code,
- * as an alternative to an actual Stripe refund — only valid while the
- * trial class is within the last 24 hours and hasn't already been converted.
+ * Converts a trial (Drop-In) booking into a $20-off promo code, as an
+ * alternative to an actual Stripe refund — only valid while the trial class
+ * is within the last week and hasn't already been converted.
  */
 export async function issueTrialCreditCode(formData: FormData) {
   await requireAdmin();
@@ -1012,7 +1012,7 @@ export async function issueTrialCreditCode(formData: FormData) {
   const hoursSinceClass = trialBooking
     ? (Date.now() - trialBooking.session.startsAt.getTime()) / (60 * 60 * 1000)
     : null;
-  if (hoursSinceClass === null || hoursSinceClass < 0 || hoursSinceClass > 24) {
+  if (hoursSinceClass === null || hoursSinceClass < 0 || hoursSinceClass > 24 * 7) {
     redirect(`/admin/customers/${customerId}?error=trial_window_expired`);
   }
 

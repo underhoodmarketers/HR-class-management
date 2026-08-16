@@ -18,7 +18,7 @@ const errorMessages: Record<string, string> = {
   exists: "Another account already uses that email.",
   membership_invalid: "Fill in a package, valid dates, and non-negative credits.",
   stripe_not_configured: "Payments aren't set up, so a promo code can't be created.",
-  trial_window_expired: "Their trial class was more than 24 hours ago — the conversion window has passed.",
+  trial_window_expired: "Their trial class was more than a week ago — the conversion window has passed.",
   trial_code_failed: "Couldn't create the promo code in Stripe. Try again.",
 };
 
@@ -112,7 +112,7 @@ export default async function CustomerDetail({
     !trialMembership.trialCreditCode &&
     hoursSinceTrialClass !== null &&
     hoursSinceTrialClass >= 0 &&
-    hoursSinceTrialClass <= 24;
+    hoursSinceTrialClass <= 24 * 7;
 
   const banner =
     searchParams.error && errorMessages[searchParams.error]
