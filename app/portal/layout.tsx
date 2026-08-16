@@ -1,7 +1,11 @@
 import Link from "next/link";
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { waiverSignatures, waiverTemplate } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { logoutAction } from "@/app/actions/auth";
 import MobileNav from "@/components/MobileNav";
+import WaiverGateModal from "@/components/WaiverGateModal";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +24,29 @@ export default async function PortalLayout({
   children: React.ReactNode;
 }) {
   const session = await requireUser();
+
+  // Waiver is a customer-only requirement (not applicable to staff who
+  // happen to browse into /portal). Missing entirely, or signed against an
+  // older template version than what's current, both count as "not signed."
+  let waiverGate: { title: string; body: string } | null = null;
+  if (session.role === "customer") {
+    const [latestSignature, template] = await Promise.all([
+      db.query.waiverSignatures.findFirst({
+        where: eq(waiverSignatures.userId, session.userId),
+        orderBy: [desc(waiverSignatures.version)],
+      }),
+      db.query.waiverTemplate.findFirst({ orderBy: [desc(waiverTemplate.version)] }),
+    ]);
+    const needsWaiver = !latestSignature || (template ? latestSignature.version < template.version : false);
+    if (needsWaiver) {
+      waiverGate = {
+        title: template?.title ?? "Liability Waiver",
+        body:
+          template?.body ??
+          "By joining Holistic Rhythm you acknowledge the physical nature of dance fitness and participate at your own risk.",
+      };
+    }
+  }
 
   return (
     <div className="min-h-screen bg-cream">
@@ -59,6 +86,7 @@ export default async function PortalLayout({
         <p className="mb-6 text-sm text-ink/40">Hi, {session.name.split(" ")[0]} 👋</p>
         {children}
       </main>
+      {waiverGate ? <WaiverGateModal waiverTitle={waiverGate.title} waiverBody={waiverGate.body} /> : null}
     </div>
   );
 }

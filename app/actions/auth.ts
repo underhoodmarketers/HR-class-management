@@ -276,6 +276,37 @@ export async function logoutAction() {
   redirect("/login");
 }
 
+const signWaiverSchema = z.object({
+  signedName: z.string().min(2, "Type your name to sign the waiver."),
+  agree: z.string().refine((v) => v === "on", "You must accept the waiver to continue."),
+});
+
+/**
+ * Records a fresh waiver signature for the logged-in customer, at whatever
+ * the current template version is — used by the portal's blocking waiver
+ * gate (missing or outdated signature) rather than the signup flow.
+ */
+export async function signWaiverAction(_prev: unknown, formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const parsed = signWaiverSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const template = await db.query.waiverTemplate.findFirst({
+    orderBy: [desc(waiverTemplate.version)],
+  });
+  await db.insert(waiverSignatures).values({
+    userId: session.userId,
+    signedName: parsed.data.signedName,
+    version: template?.version ?? 1,
+  });
+
+  redirect("/portal");
+}
+
 // ---------- Change password (logged-in user, any role) ----------
 
 export async function changePasswordAction(formData: FormData) {
