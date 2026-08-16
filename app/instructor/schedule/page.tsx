@@ -13,6 +13,7 @@ import {
   parseMonthKey,
   shiftMonthKey,
   monthLabel,
+  DROP_IN_PACKAGE_NAME,
 } from "@/lib/utils";
 import InstructorBookForm from "@/components/InstructorBookForm";
 import InstructorRoster from "@/components/InstructorRoster";
@@ -97,6 +98,7 @@ export default async function InstructorSchedulePage({
       db.query.memberships.findMany({
         where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
         columns: { userId: true, creditsRemaining: true },
+        with: { package: { columns: { name: true } } },
         orderBy: [desc(memberships.endsAt)],
       }),
       db.query.classSessions.findFirst({
@@ -111,10 +113,13 @@ export default async function InstructorSchedulePage({
   const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
 
   // Latest-ending active membership per customer — mirrors getActiveMembership.
-  const activeByUser = new Map<number, { creditsRemaining: number | null }>();
+  const activeByUser = new Map<number, { creditsRemaining: number | null; isDropIn: boolean }>();
   for (const m of activeMembershipRows) {
     if (!activeByUser.has(m.userId)) {
-      activeByUser.set(m.userId, { creditsRemaining: m.creditsRemaining });
+      activeByUser.set(m.userId, {
+        creditsRemaining: m.creditsRemaining,
+        isDropIn: m.package.name === DROP_IN_PACKAGE_NAME,
+      });
     }
   }
   const creditInfoByUser = new Map(
@@ -123,7 +128,7 @@ export default async function InstructorSchedulePage({
       const hasRegularCredit = active
         ? active.creditsRemaining === null || active.creditsRemaining > 0
         : false;
-      const hasMakeupCredit = Boolean(active) && c.makeupCredits > 0;
+      const hasMakeupCredit = Boolean(active) && !active!.isDropIn && c.makeupCredits > 0;
       return [
         c.id,
         {

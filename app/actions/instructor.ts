@@ -8,6 +8,7 @@ import { bookings, classSessions, instructorLocations, memberships, users, userL
 import { requireInstructor } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
 import { sendBulkEmail, sendSingleEmail } from "@/lib/email";
+import { DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 
 /**
  * Books a customer into a class from the instructor portal — e.g. a walk-in
@@ -52,13 +53,14 @@ export async function instructorBookClass(formData: FormData) {
   if (!active) return;
 
   const membershipId = active.membership.id;
+  const isDropIn = active.membership.package.name === DROP_IN_PACKAGE_NAME;
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { makeupCredits: true },
   });
   const hasRegularCredit =
     active.membership.creditsRemaining === null || active.membership.creditsRemaining > 0;
-  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+  const hasMakeupCredit = !isDropIn && Boolean(user && user.makeupCredits > 0);
 
   const creditSource = String(formData.get("creditSource") || "auto");
   let fromMakeupCredit = false;

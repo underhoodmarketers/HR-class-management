@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { bookings, classSessions, memberships, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
+import { DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 
 export async function bookClass(formData: FormData) {
   const session = await requireUser();
@@ -54,12 +55,13 @@ export async function bookClass(formData: FormData) {
   // draw from the package's own credits first, falling back to the
   // never-expiring makeup pool only once those run out. When both are
   // available, the customer can explicitly choose which to use.
+  const isDropIn = membership.package.name === DROP_IN_PACKAGE_NAME;
   const user = await db.query.users.findFirst({
     where: eq(users.id, session.userId),
     columns: { makeupCredits: true },
   });
   const hasRegularCredit = membership.creditsRemaining === null || membership.creditsRemaining > 0;
-  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+  const hasMakeupCredit = !isDropIn && Boolean(user && user.makeupCredits > 0);
 
   const creditSource = String(formData.get("creditSource") || "auto");
   let fromMakeupCredit = false;

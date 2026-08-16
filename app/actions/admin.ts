@@ -36,6 +36,7 @@ import {
   studioWeekday,
   studioClock,
   withStudioClock,
+  DROP_IN_PACKAGE_NAME,
 } from "@/lib/utils";
 import { randomUUID } from "crypto";
 import { stripe, stripeConfigured } from "@/lib/stripe";
@@ -363,13 +364,15 @@ export async function adminBookClass(formData: FormData) {
   if (!active) return;
 
   const membershipId = active.membership.id;
+  // A Drop-In is a standalone single class — never draws from the makeup pool.
+  const isDropIn = active.membership.package.name === DROP_IN_PACKAGE_NAME;
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { makeupCredits: true },
   });
   const hasRegularCredit =
     active.membership.creditsRemaining === null || active.membership.creditsRemaining > 0;
-  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+  const hasMakeupCredit = !isDropIn && Boolean(user && user.makeupCredits > 0);
 
   // "auto" (the default, and the only option when just one type is
   // available) keeps the old waterfall: draw from the package's own

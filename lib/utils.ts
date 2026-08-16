@@ -18,6 +18,11 @@ export function formatMoney(cents: number) {
 // both places.
 export const INSTRUCTOR_RATE_CENTS = 2500;
 
+// A Drop-In is a standalone single class, good for its own duration window —
+// it never contributes to or draws from the makeup credit pool. Matched by
+// name since packages have no dedicated "type" field.
+export const DROP_IN_PACKAGE_NAME = "Drop-In (1 Class)";
+
 // Stripe's standard US card rate.
 const STRIPE_PERCENT = 0.029;
 const STRIPE_FIXED_CENTS = 30;

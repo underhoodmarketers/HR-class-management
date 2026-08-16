@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { classSessions, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
+import { DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import PortalScheduleList from "@/components/PortalScheduleList";
 
 export const dynamic = "force-dynamic";
@@ -52,9 +53,13 @@ export default async function SchedulePage() {
     limit: 60,
   });
 
+  // A Drop-In is a standalone single class — it never draws from the
+  // makeup pool, so while it's the active package, makeup credits (even
+  // if banked) aren't offered as a way to book.
+  const isDropIn = membership.package.name === DROP_IN_PACKAGE_NAME;
   const makeupCredits = profile?.makeupCredits ?? 0;
   const hasRegularCredit = membership.creditsRemaining === null || membership.creditsRemaining > 0;
-  const hasMakeupCredit = makeupCredits > 0;
+  const hasMakeupCredit = !isDropIn && makeupCredits > 0;
   const noCredits = !hasRegularCredit && !hasMakeupCredit;
 
   return (

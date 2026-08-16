@@ -1,7 +1,8 @@
 import "server-only";
-import { and, eq, gt, desc, asc, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, desc, asc, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships, users } from "@/db/schema";
+import { memberships, packages, users } from "@/db/schema";
+import { DROP_IN_PACKAGE_NAME } from "./utils";
 
 export async function getActiveMembership(userId: number) {
   const now = new Date();
@@ -40,12 +41,22 @@ export async function getActiveMemberships(userId: number) {
  * those memberships out so the same credits can't be used twice. Call this
  * right before creating a new membership for the customer — "any credits
  * left roll over when a new package is bought."
+ *
+ * Drop-In (trial) packages are excluded — a Drop-In is a standalone single
+ * class good only within its own window, not a credit that carries forward.
  */
 export async function rolloverUnusedCredits(userId: number): Promise<void> {
   const leftover = await db
     .select({ id: memberships.id, creditsRemaining: memberships.creditsRemaining })
     .from(memberships)
-    .where(and(eq(memberships.userId, userId), gt(memberships.creditsRemaining, 0)));
+    .innerJoin(packages, eq(memberships.packageId, packages.id))
+    .where(
+      and(
+        eq(memberships.userId, userId),
+        gt(memberships.creditsRemaining, 0),
+        ne(packages.name, DROP_IN_PACKAGE_NAME)
+      )
+    );
   if (leftover.length === 0) return;
 
   const total = leftover.reduce((sum, m) => sum + (m.creditsRemaining ?? 0), 0);

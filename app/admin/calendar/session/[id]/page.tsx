@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { and, count, desc, eq, gt, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, memberships, users } from "@/db/schema";
-import { formatDay, formatTime, studioDateKey } from "@/lib/utils";
+import { formatDay, formatTime, studioDateKey, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import AddCustomerToClass from "@/components/AddCustomerToClass";
 import SessionRosterTabs from "@/components/SessionRosterTabs";
 
@@ -37,6 +37,7 @@ export default async function SessionDetailPage({
     db.query.memberships.findMany({
       where: and(eq(memberships.status, "active"), gt(memberships.endsAt, now)),
       columns: { userId: true, creditsRemaining: true },
+      with: { package: { columns: { name: true } } },
       orderBy: [desc(memberships.endsAt)],
     }),
   ]);
@@ -44,10 +45,13 @@ export default async function SessionDetailPage({
   if (!session) notFound();
 
   // Latest-ending active membership per customer — mirrors getActiveMembership.
-  const activeByUser = new Map<number, { creditsRemaining: number | null }>();
+  const activeByUser = new Map<number, { creditsRemaining: number | null; isDropIn: boolean }>();
   for (const m of activeMembershipRows) {
     if (!activeByUser.has(m.userId)) {
-      activeByUser.set(m.userId, { creditsRemaining: m.creditsRemaining });
+      activeByUser.set(m.userId, {
+        creditsRemaining: m.creditsRemaining,
+        isDropIn: m.package.name === DROP_IN_PACKAGE_NAME,
+      });
     }
   }
   const creditInfoByUser = new Map(
@@ -56,7 +60,7 @@ export default async function SessionDetailPage({
       const hasRegularCredit = active
         ? active.creditsRemaining === null || active.creditsRemaining > 0
         : false;
-      const hasMakeupCredit = Boolean(active) && c.makeupCredits > 0;
+      const hasMakeupCredit = Boolean(active) && !active!.isDropIn && c.makeupCredits > 0;
       return [
         c.id,
         {
