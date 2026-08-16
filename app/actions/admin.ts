@@ -28,7 +28,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
-import { getActiveMembership, rolloverUnusedCredits, applyOwedCredits } from "@/lib/queries";
+import { getActiveMembership, rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow } from "@/lib/queries";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -1191,10 +1191,10 @@ export async function approveZellePayment(formData: FormData) {
   // accidental reject) — just never re-grant on an already-approved one.
   if (!request || request.status === "approved") return;
 
-  const startsAt = new Date();
-  // durationDays counts the start day itself as day 1.
-  const endsAt = new Date(
-    startsAt.getTime() + (request.package.durationDays - 1) * 24 * 60 * 60 * 1000
+  const { startsAt, endsAt } = await computeMembershipWindow(
+    request.userId,
+    request.package.durationDays,
+    request.package.name
   );
   await rolloverUnusedCredits(request.userId);
   const creditsRemaining = await applyOwedCredits(request.userId, request.package.credits);

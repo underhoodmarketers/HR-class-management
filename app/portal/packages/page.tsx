@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages, zellePayments } from "@/db/schema";
-import { formatMoney, daysUntil, stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
+import { formatMoney, daysUntil, formatDay, stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import { requireUser } from "@/lib/guards";
 import { getActiveMemberships } from "@/lib/queries";
 import PackageTierCard from "@/components/PackageTierCard";
@@ -104,10 +104,16 @@ export default async function PortalPackages({
           </p>
           <ul className="space-y-2">
             {activeMemberships.map((m) => {
+              const notStartedYet = m.startsAt > new Date();
               const days = daysUntil(m.endsAt);
               const verb = m.billingType === "recurring" ? "Renews" : "Expires";
-              const when =
-                days <= 0 ? `${verb} today` : days === 1 ? `${verb} in 1 day` : `${verb} in ${days} days`;
+              const when = notStartedYet
+                ? `Starts ${formatDay(m.startsAt)}`
+                : days <= 0
+                ? `${verb} today`
+                : days === 1
+                ? `${verb} in 1 day`
+                : `${verb} in ${days} days`;
               return (
                 <li key={m.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
                   <span className="font-600 text-magenta-deep">{m.package.name}</span>

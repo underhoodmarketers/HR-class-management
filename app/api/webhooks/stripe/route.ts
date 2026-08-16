@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import { db } from "@/db";
 import { memberships, packages, promoCodeRedemptions, users, dropInInvites } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
-import { rolloverUnusedCredits, applyOwedCredits } from "@/lib/queries";
+import { rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow } from "@/lib/queries";
 import { sendPackagePurchaseEmail, sendDropInInviteEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
@@ -104,12 +104,9 @@ export async function POST(req: NextRequest) {
           where: eq(packages.id, packageId),
         });
         if (pkg) {
-          const startsAt = new Date();
-          // durationDays counts the start day itself as day 1 (e.g. a
-          // 28-day/"1 month" package starting 8/8 ends 9/4, not 9/5).
-          const endsAt = new Date(
-            startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
-          );
+          // Queues behind any real package the customer is still using —
+          // see computeMembershipWindow. A Drop-In is exempt either way.
+          const { startsAt, endsAt } = await computeMembershipWindow(userId, pkg.durationDays, pkg.name);
 
           // A Drop-In bought in quantity > 1 can be split with friends —
           // each friend gets their own invite (and, once accepted, their
@@ -196,11 +193,7 @@ export async function POST(req: NextRequest) {
             where: eq(packages.id, packageId),
           });
           if (pkg) {
-            const startsAt = new Date();
-            // durationDays counts the start day itself as day 1.
-            const endsAt = new Date(
-              startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000
-            );
+            const { startsAt, endsAt } = await computeMembershipWindow(userId, pkg.durationDays, pkg.name);
             await rolloverUnusedCredits(userId);
             const creditsRemaining = await applyOwedCredits(userId, pkg.credits);
             await db.insert(memberships).values({

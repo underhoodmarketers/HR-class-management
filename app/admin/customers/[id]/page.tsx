@@ -84,7 +84,16 @@ export default async function CustomerDetail({
     usedCountByMembership.set(b.membershipId, (usedCountByMembership.get(b.membershipId) ?? 0) + 1);
   }
 
-  const currentMembership = customer.memberships[0] ?? null;
+  // Prefer whichever membership is actually in use right now (matches the
+  // booking flow's own resolution) — a newer purchase may just be queued to
+  // start once that one ends, so it's not really "current" yet. Falls back
+  // to the most recent purchase for a fully expired customer.
+  const currentMembership =
+    customer.memberships.find(
+      (m) => m.status === "active" && m.startsAt <= now && m.endsAt > now
+    ) ??
+    customer.memberships[0] ??
+    null;
   const attendedInPackage = currentMembership
     ? allBookings.filter((b) => attended(b) && b.membershipId === currentMembership.id).length
     : 0;
@@ -240,9 +249,12 @@ export default async function CustomerDetail({
             Membership history
           </h2>
           <ul className="divide-y divide-ink/5 text-sm">
-            {customer.memberships.slice(1).map((m) => {
+            {customer.memberships
+              .filter((m) => m.id !== currentMembership?.id)
+              .map((m) => {
               const used = usedCountByMembership.get(m.id) ?? 0;
               const total = m.package.credits;
+              const notStartedYet = m.status === "active" && m.startsAt > now;
               return (
                 <li key={m.id} className="flex items-center justify-between py-2">
                   <span>
@@ -254,7 +266,9 @@ export default async function CustomerDetail({
                   </span>
                   <span className="text-right text-ink/50">
                     {formatDay(m.startsAt)} – {formatDay(m.endsAt)}
-                    <span className="badge ml-2 bg-blush text-magenta-deep">{m.status}</span>
+                    <span className="badge ml-2 bg-blush text-magenta-deep">
+                      {notStartedYet ? "queued" : m.status}
+                    </span>
                   </span>
                 </li>
               );
