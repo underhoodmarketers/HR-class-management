@@ -74,6 +74,16 @@ export default async function CustomerDetail({
   const attended = (b: (typeof allBookings)[number]) =>
     b.status === "booked" && b.session.startsAt < now;
 
+  // Classes used per membership — counted from actual bookings rather than
+  // packageCredits - creditsRemaining, since leftover credits get swept into
+  // the makeup pool on rollover (zeroing creditsRemaining without meaning
+  // every credit was actually used).
+  const usedCountByMembership = new Map<number, number>();
+  for (const b of allBookings) {
+    if (b.status !== "booked" || !b.membershipId) continue;
+    usedCountByMembership.set(b.membershipId, (usedCountByMembership.get(b.membershipId) ?? 0) + 1);
+  }
+
   const currentMembership = customer.memberships[0] ?? null;
   const attendedInPackage = currentMembership
     ? allBookings.filter((b) => attended(b) && b.membershipId === currentMembership.id).length
@@ -229,18 +239,25 @@ export default async function CustomerDetail({
             Membership history
           </h2>
           <ul className="divide-y divide-ink/5 text-sm">
-            {customer.memberships.slice(1).map((m) => (
-              <li key={m.id} className="flex items-center justify-between py-2">
-                <span>
-                  {m.package.name}{" "}
-                  <span className="text-ink/40">({formatMoney(m.package.priceCents)})</span>
-                </span>
-                <span className="text-right text-ink/50">
-                  {formatDay(m.startsAt)} – {formatDay(m.endsAt)}
-                  <span className="badge ml-2 bg-blush text-magenta-deep">{m.status}</span>
-                </span>
-              </li>
-            ))}
+            {customer.memberships.slice(1).map((m) => {
+              const used = usedCountByMembership.get(m.id) ?? 0;
+              const total = m.package.credits;
+              return (
+                <li key={m.id} className="flex items-center justify-between py-2">
+                  <span>
+                    {m.package.name}{" "}
+                    <span className="text-ink/40">({formatMoney(m.package.priceCents)})</span>{" "}
+                    <span className="text-ink/40">
+                      {total === null ? `${used} used` : `(${used}/${total})`}
+                    </span>
+                  </span>
+                  <span className="text-right text-ink/50">
+                    {formatDay(m.startsAt)} – {formatDay(m.endsAt)}
+                    <span className="badge ml-2 bg-blush text-magenta-deep">{m.status}</span>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
