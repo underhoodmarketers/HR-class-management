@@ -5,7 +5,16 @@ import { redirect } from "next/navigation";
 import { eq, desc, and, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { users, waiverTemplate, waiverSignatures, passwordResetTokens, userLocations } from "@/db/schema";
+import {
+  users,
+  waiverTemplate,
+  waiverSignatures,
+  passwordResetTokens,
+  userLocations,
+  dropInInvites,
+  memberships,
+  packages,
+} from "@/db/schema";
 import {
   hashPassword,
   verifyPassword,
@@ -106,6 +115,128 @@ export async function signupAction(_prev: unknown, formData: FormData) {
   });
 
   redirect(safeNext(data.next) ?? "/portal");
+}
+
+const acceptInviteSchema = z.object({
+  token: z.string().min(1),
+  name: z.string().min(2, "Enter your full name."),
+  email: z.string().email("Enter a valid email."),
+  phone: z.string().min(1, "Enter your phone number."),
+  dob: z
+    .string()
+    .min(1, "Enter your date of birth.")
+    .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date of birth.")
+    .refine((v) => {
+      const d = new Date(v);
+      return d <= new Date() && d.getFullYear() > 1900;
+    }, "Enter a valid date of birth.")
+    .refine((v) => {
+      const d = new Date(v);
+      const cutoff = new Date();
+      cutoff.setFullYear(cutoff.getFullYear() - 18);
+      return d <= cutoff;
+    }, "You must be 18 or older to create an account. Please contact the studio to enroll a minor."),
+  instagram: z.string().optional(),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+  signedName: z.string().min(2, "Type your name to sign the waiver."),
+  agree: z.string().refine((v) => v === "on", "You must accept the waiver to join."),
+});
+
+/**
+ * Completes a Drop-In friend invite: creates the friend's own account
+ * (separate login from whoever bought it for them), records their waiver
+ * signature, and grants their single Drop-In credit — mirrors signupAction,
+ * but sourced from a drop_in_invites row instead of an open signup form.
+ */
+export async function acceptDropInInviteAction(_prev: unknown, formData: FormData) {
+  const locationIds = formData
+    .getAll("locationIds")
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n));
+
+  const parsed = acceptInviteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+  if (locationIds.length === 0) {
+    return { error: "Choose at least one preferred studio." };
+  }
+  const data = parsed.data;
+
+  const invite = await db.query.dropInInvites.findFirst({
+    where: eq(dropInInvites.token, data.token),
+  });
+  if (!invite || invite.status !== "pending") {
+    return { error: "This invite is invalid or has already been used." };
+  }
+
+  const pkg = await db.query.packages.findFirst({ where: eq(packages.id, invite.packageId) });
+  if (!pkg) {
+    return { error: "Something went wrong. Please contact the studio." };
+  }
+
+  const existing = await db.query.users.findFirst({
+    where: eq(users.email, data.email.toLowerCase()),
+  });
+  if (existing) {
+    return { error: "An account with that email already exists. Try signing in." };
+  }
+
+  const passwordHash = await hashPassword(data.password);
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: data.email.toLowerCase(),
+      passwordHash,
+      name: data.name,
+      phone: data.phone,
+      dob: data.dob,
+      instagram: data.instagram?.trim().replace(/^@/, "") || null,
+      role: "customer",
+    })
+    .returning();
+
+  await db
+    .insert(userLocations)
+    .values(locationIds.map((locationId) => ({ userId: user.id, locationId })));
+
+  const template = await db.query.waiverTemplate.findFirst({
+    orderBy: [desc(waiverTemplate.version)],
+  });
+  await db.insert(waiverSignatures).values({
+    userId: user.id,
+    signedName: data.signedName,
+    version: template?.version ?? 1,
+  });
+
+  const startsAt = new Date();
+  // durationDays counts the start day itself as day 1 — the clock still
+  // only really starts moving once they book their first class, same as
+  // any other purchased package.
+  const endsAt = new Date(startsAt.getTime() + (pkg.durationDays - 1) * 24 * 60 * 60 * 1000);
+  await db.insert(memberships).values({
+    userId: user.id,
+    packageId: pkg.id,
+    status: "active",
+    creditsRemaining: 1,
+    startsAt,
+    endsAt,
+    billingType: "one_time",
+  });
+
+  await db
+    .update(dropInInvites)
+    .set({ status: "completed", acceptedUserId: user.id, completedAt: new Date() })
+    .where(eq(dropInInvites.id, invite.id));
+
+  await createSession({
+    userId: user.id,
+    role: "customer",
+    name: user.name,
+    email: user.email,
+  });
+
+  redirect("/portal");
 }
 
 const loginSchema = z.object({

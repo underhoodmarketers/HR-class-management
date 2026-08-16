@@ -1,11 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages, zellePayments } from "@/db/schema";
-import { formatMoney, daysUntil, stripeFeeCents } from "@/lib/utils";
+import { formatMoney, daysUntil, stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import { requireUser } from "@/lib/guards";
 import { getActiveMemberships } from "@/lib/queries";
 import PackageTierCard from "@/components/PackageTierCard";
 import BuyButton from "@/components/BuyButton";
+import DropInBuyButton from "@/components/DropInBuyButton";
 import ZelleButton from "@/components/ZelleButton";
 
 export const dynamic = "force-dynamic";
@@ -170,13 +171,17 @@ export default async function PortalPackages({
               </li>
             </ul>
             <div className="mt-6 flex flex-col gap-2">
-              <BuyButton
-                packageId={p.id}
-                billingType="one_time"
-                label="Buy now"
-                className="btn-primary w-full"
-                autoOpen={p.id === highlightId && autoOpenBillingType === "one_time"}
-              />
+              {p.name === DROP_IN_PACKAGE_NAME ? (
+                <DropInBuyButton packageId={p.id} label="Buy now" className="btn-primary w-full" />
+              ) : (
+                <BuyButton
+                  packageId={p.id}
+                  billingType="one_time"
+                  label="Buy now"
+                  className="btn-primary w-full"
+                  autoOpen={p.id === highlightId && autoOpenBillingType === "one_time"}
+                />
+              )}
               <ZelleButton
                 packageId={p.id}
                 priceCents={p.priceCents}

@@ -312,6 +312,30 @@ export const locationRevenueHistory = pgTable("location_revenue_history", {
   comment: text("comment"),
 });
 
+// ---------- Drop-In friend invites ----------
+// When a customer buys more than one Drop-In credit and splits some with
+// friends, each friend gets emailed one of these instead of a credit
+// landing directly on the buyer's account — a friend needs their own login
+// to book, so their account (and Drop-In membership) isn't created until
+// they complete this invite (waiver included).
+export const dropInInvites = pgTable("drop_in_invites", {
+  id: serial("id").primaryKey(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  inviterUserId: integer("inviter_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  packageId: integer("package_id")
+    .notNull()
+    .references(() => packages.id),
+  friendName: varchar("friend_name", { length: 160 }).notNull(),
+  friendPhone: varchar("friend_phone", { length: 40 }).notNull(),
+  friendEmail: varchar("friend_email", { length: 255 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("pending"), // pending | completed
+  acceptedUserId: integer("accepted_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
 // ---------- Promo codes (restrictions layer on top of Stripe coupons) ----------
 // Stripe still owns the actual discount mechanics (coupon + promotion
 // code); this table tracks which one and lets checkout enforce
@@ -407,6 +431,11 @@ export const locationExpensesRelations = relations(locationExpenses, ({ one }) =
 
 export const locationRevenueHistoryRelations = relations(locationRevenueHistory, ({ one }) => ({
   location: one(locations, { fields: [locationRevenueHistory.locationId], references: [locations.id] }),
+}));
+
+export const dropInInvitesRelations = relations(dropInInvites, ({ one }) => ({
+  inviter: one(users, { fields: [dropInInvites.inviterUserId], references: [users.id] }),
+  package: one(packages, { fields: [dropInInvites.packageId], references: [packages.id] }),
 }));
 
 export const promoCodesRelations = relations(promoCodes, ({ many }) => ({

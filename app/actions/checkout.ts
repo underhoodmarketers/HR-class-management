@@ -7,12 +7,14 @@ import { db } from "@/db";
 import { memberships, packages, users, userLocations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { stripeFeeCents } from "@/lib/utils";
+import { stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import { resolvePromoCode } from "@/lib/promoCodes";
 
 const MIN_CANCEL_NOTICE_SECONDS = 28 * 24 * 60 * 60; // 4 weeks
+const MAX_DROP_IN_QUANTITY = 6;
 
 export type BillingType = "one_time" | "recurring";
+export type FriendInvite = { name: string; phone: string; email: string };
 
 export async function validatePromoCode(
   code: string,
@@ -42,7 +44,9 @@ export async function validatePromoCode(
 export async function createEmbeddedCheckout(
   packageId: number,
   billingType: BillingType,
-  promoCode?: string
+  promoCode?: string,
+  quantity: number = 1,
+  friends: FriendInvite[] = []
 ): Promise<{ clientSecret: string } | { error: string }> {
   const session = await requireUser();
 
@@ -53,6 +57,23 @@ export async function createEmbeddedCheckout(
 
   if (billingType === "recurring" && (!pkg.recurringPriceCents || !pkg.billingWeeks)) {
     return { error: "Autopay isn't available for that package." };
+  }
+
+  // Buying more than one and splitting with friends is only meaningful for
+  // the Drop-In package — for everything else, ignore/clamp quantity so a
+  // tampered client request can't multiply a subscription or credit pack.
+  const isDropIn = pkg.name === DROP_IN_PACKAGE_NAME && billingType === "one_time";
+  if (!isDropIn) {
+    quantity = 1;
+    friends = [];
+  } else {
+    quantity = Math.min(Math.max(Math.trunc(quantity) || 1, 1), MAX_DROP_IN_QUANTITY);
+    friends = friends
+      .map((f) => ({ name: f.name.trim(), phone: f.phone.trim(), email: f.email.trim().toLowerCase() }))
+      .filter((f) => f.name && f.phone && f.email);
+    if (friends.length > quantity - 1) {
+      return { error: "You can't invite more friends than Drop-Ins you're buying." };
+    }
   }
 
   if (!stripeConfigured()) {
@@ -82,6 +103,8 @@ export async function createEmbeddedCheckout(
     packageId: String(pkg.id),
     billingType,
     ...(appliedPromoCodeId ? { promoCodeId: String(appliedPromoCodeId) } : {}),
+    ...(isDropIn ? { quantity: String(quantity) } : {}),
+    ...(isDropIn && friends.length > 0 ? { friends: JSON.stringify(friends) } : {}),
   };
 
   const checkout = await stripe.checkout.sessions.create(
@@ -125,7 +148,7 @@ export async function createEmbeddedCheckout(
           customer_email: session.email,
           line_items: [
             {
-              quantity: 1,
+              quantity,
               price_data: {
                 currency: "usd",
                 unit_amount: pkg.priceCents,
@@ -139,7 +162,7 @@ export async function createEmbeddedCheckout(
               quantity: 1,
               price_data: {
                 currency: "usd",
-                unit_amount: stripeFeeCents(pkg.priceCents),
+                unit_amount: stripeFeeCents(pkg.priceCents * quantity),
                 product_data: { name: "Card processing fee" },
               },
             },

@@ -115,6 +115,28 @@ export async function sendPackagePurchaseEmail(
   });
 }
 
+export async function sendDropInInviteEmail(
+  to: string,
+  details: { friendName: string; inviterName: string; inviteUrl: string }
+) {
+  if (!emailConfigured()) {
+    console.warn(`RESEND_API_KEY not set — skipped Drop-In invite email to ${to}`);
+    return;
+  }
+  const { friendName, inviterName, inviteUrl } = details;
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `${inviterName} got you a Drop-In class at Holistic Rhythm`,
+    html: `
+      <p>Hi ${friendName},</p>
+      <p><strong>${inviterName}</strong> picked up a Drop-In class for you at Holistic Rhythm!</p>
+      <p><a href="${inviteUrl}">Finish setting up your account</a> to sign our liability waiver and book your class. This link is just for you — it creates your own login, separate from ${inviterName}'s.</p>
+      <p>See you soon!</p>
+    `,
+  });
+}
+
 export async function sendMembershipReminderEmail(
   to: string,
   details: { name: string; packageName: string; endsAt: string; portalUrl: string }
