@@ -107,6 +107,17 @@ function OwedBanner({ creditsOwed }: { creditsOwed: number }) {
   );
 }
 
+function MakeupCreditsBanner({ makeupCredits }: { makeupCredits: number }) {
+  if (makeupCredits <= 0) return null;
+  return (
+    <p className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700">
+      {makeupCredits} banked makeup credit{makeupCredits === 1 ? "" : "s"} — never
+      expires, and can be used any time they book a class, not just once their
+      package runs out.
+    </p>
+  );
+}
+
 export default function MembershipCard({
   customerId,
   membership,
@@ -114,6 +125,7 @@ export default function MembershipCard({
   attendedInPackage,
   totalAttended,
   creditsOwed,
+  makeupCredits,
 }: {
   customerId: number;
   membership: Membership | null;
@@ -121,6 +133,7 @@ export default function MembershipCard({
   attendedInPackage: number;
   totalAttended: number;
   creditsOwed: number;
+  makeupCredits: number;
 }) {
   const [mode, setMode] = useState<null | "edit" | "create">(null);
   const todayKey = studioDateKey(new Date());
@@ -163,6 +176,7 @@ export default function MembershipCard({
           </button>
         </div>
         <OwedBanner creditsOwed={creditsOwed} />
+        <MakeupCreditsBanner makeupCredits={makeupCredits} />
         <p className="text-sm text-ink/40">No membership yet.</p>
       </div>
     );
@@ -238,6 +252,7 @@ export default function MembershipCard({
         </div>
       </div>
       <OwedBanner creditsOwed={creditsOwed} />
+      <MakeupCreditsBanner makeupCredits={makeupCredits} />
       <dl className="space-y-2 text-sm">
         <div><dt className="text-ink/40">Package</dt><dd>{membership.packageName}</dd></div>
         <div>

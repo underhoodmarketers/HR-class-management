@@ -4,16 +4,27 @@ import { useState } from "react";
 import { adminBookClass } from "@/app/actions/admin";
 import { SubmitButton } from "./SubmitButton";
 
+type Customer = {
+  id: number;
+  name: string;
+  hasCredits: boolean;
+  hasRegularCredit: boolean;
+  hasMakeupCredit: boolean;
+  makeupCredits: number;
+  alreadyBooked: boolean;
+};
+
 export default function AddCustomerToClass({
   sessionId,
   customers,
   full,
 }: {
   sessionId: number;
-  customers: { id: number; name: string; hasCredits: boolean; alreadyBooked: boolean }[];
+  customers: Customer[];
   full: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   if (full) {
     return <p className="text-sm text-ink/40">Class is full.</p>;
@@ -26,6 +37,9 @@ export default function AddCustomerToClass({
   const filtered = q
     ? customers.filter((c) => c.name.toLowerCase().includes(q))
     : customers;
+
+  const selected = customers.find((c) => c.id === selectedId) ?? null;
+  const showCreditChoice = Boolean(selected?.hasRegularCredit && selected?.hasMakeupCredit);
 
   return (
     <form
@@ -62,6 +76,7 @@ export default function AddCustomerToClass({
         className="input h-auto"
         required
         defaultValue=""
+        onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
       >
         <option value="" disabled>
           Select a customer…
@@ -78,10 +93,33 @@ export default function AddCustomerToClass({
               ? " — no credits, can't book"
               : c.alreadyBooked
               ? " — already booked"
+              : c.hasMakeupCredit
+              ? ` — ${c.makeupCredits} makeup credit${c.makeupCredits === 1 ? "" : "s"} banked`
               : ""}
           </option>
         ))}
       </select>
+
+      {showCreditChoice ? (
+        <div className="rounded-xl border border-ink/10 p-3">
+          <p className="mb-2 text-xs font-medium text-ink/60">
+            {selected!.name} has both a package credit and{" "}
+            {selected!.makeupCredits} banked makeup credit{selected!.makeupCredits === 1 ? "" : "s"}
+            . Which should this class use?
+          </p>
+          <div className="flex flex-col gap-1.5 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="creditSource" value="regular" defaultChecked />
+              Regular package credit
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="creditSource" value="makeup" />
+              Makeup credit
+            </label>
+          </div>
+        </div>
+      ) : null}
+
       <p className="text-xs text-ink/40">
         Customers with no package or no remaining credits can&apos;t be booked. Booking
         someone already in this class will ask you to confirm first.

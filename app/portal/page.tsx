@@ -110,6 +110,12 @@ export default async function PortalHome({
                 <p className="text-white/60">Renews / ends</p>
                 <p className="text-lg font-600">{formatDay(active.membership.endsAt)}</p>
               </div>
+              {profile && profile.makeupCredits > 0 ? (
+                <div>
+                  <p className="text-white/60">Makeup credits</p>
+                  <p className="text-lg font-600">{profile.makeupCredits}</p>
+                </div>
+              ) : null}
             </div>
             {active.membership.billingType === "recurring" ? (
               subscriptionCancelAt ? (
@@ -125,6 +131,13 @@ export default async function PortalHome({
         ) : (
           <>
             <p className="mt-1 font-display text-2xl font-600">No active package</p>
+            {profile && profile.makeupCredits > 0 ? (
+              <p className="mt-1 text-sm text-white/70">
+                You still have {profile.makeupCredits} banked makeup credit
+                {profile.makeupCredits === 1 ? "" : "s"} — they&apos;ll be ready to use
+                once you have an active package again.
+              </p>
+            ) : null}
             <Link href="/portal/packages" className="mt-4 inline-flex btn bg-white text-magenta-deep">
               Browse packages
             </Link>

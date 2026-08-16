@@ -363,14 +363,31 @@ export async function adminBookClass(formData: FormData) {
   if (!active) return;
 
   const membershipId = active.membership.id;
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { makeupCredits: true },
+  });
+  const hasRegularCredit =
+    active.membership.creditsRemaining === null || active.membership.creditsRemaining > 0;
+  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+
+  // "auto" (the default, and the only option when just one type is
+  // available) keeps the old waterfall: draw from the package's own
+  // credits first, falling back to makeup only once those run out. When
+  // both are available, the UI offers an explicit choice.
+  const creditSource = String(formData.get("creditSource") || "auto");
   let fromMakeupCredit = false;
-  if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: { makeupCredits: true },
-    });
-    fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
-    if (!fromMakeupCredit) return;
+  if (creditSource === "makeup") {
+    if (!hasMakeupCredit) return;
+    fromMakeupCredit = true;
+  } else if (creditSource === "regular") {
+    if (!hasRegularCredit) return;
+    fromMakeupCredit = false;
+  } else {
+    if (!hasRegularCredit) {
+      if (!hasMakeupCredit) return;
+      fromMakeupCredit = true;
+    }
   }
 
   await db

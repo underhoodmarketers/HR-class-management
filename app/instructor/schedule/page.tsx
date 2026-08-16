@@ -117,13 +117,22 @@ export default async function InstructorSchedulePage({
       activeByUser.set(m.userId, { creditsRemaining: m.creditsRemaining });
     }
   }
-  const hasCreditsByUser = new Map<number, boolean>(
+  const creditInfoByUser = new Map(
     customers.map((c) => {
       const active = activeByUser.get(c.id);
-      const hasCredits = active
-        ? active.creditsRemaining === null || active.creditsRemaining > 0 || c.makeupCredits > 0
+      const hasRegularCredit = active
+        ? active.creditsRemaining === null || active.creditsRemaining > 0
         : false;
-      return [c.id, hasCredits];
+      const hasMakeupCredit = Boolean(active) && c.makeupCredits > 0;
+      return [
+        c.id,
+        {
+          hasCredits: hasRegularCredit || hasMakeupCredit,
+          hasRegularCredit,
+          hasMakeupCredit,
+          makeupCredits: c.makeupCredits,
+        },
+      ];
     })
   );
 
@@ -195,11 +204,17 @@ export default async function InstructorSchedulePage({
                           (b) => b.userId === c.id && b.status === "booked"
                         )
                     )
-                    .map((c) => ({
-                      id: c.id,
-                      name: c.name,
-                      hasCredits: hasCreditsByUser.get(c.id) ?? false,
-                    }))}
+                    .map((c) => {
+                      const info = creditInfoByUser.get(c.id);
+                      return {
+                        id: c.id,
+                        name: c.name,
+                        hasCredits: info?.hasCredits ?? false,
+                        hasRegularCredit: info?.hasRegularCredit ?? false,
+                        hasMakeupCredit: info?.hasMakeupCredit ?? false,
+                        makeupCredits: info?.makeupCredits ?? 0,
+                      };
+                    })}
                 />
               </div>
             ) : (
@@ -354,11 +369,17 @@ export default async function InstructorSchedulePage({
                               (b) => b.userId === c.id && b.status === "booked"
                             )
                         )
-                        .map((c) => ({
-                          id: c.id,
-                          name: c.name,
-                          hasCredits: hasCreditsByUser.get(c.id) ?? false,
-                        }))}
+                        .map((c) => {
+                          const info = creditInfoByUser.get(c.id);
+                          return {
+                            id: c.id,
+                            name: c.name,
+                            hasCredits: info?.hasCredits ?? false,
+                            hasRegularCredit: info?.hasRegularCredit ?? false,
+                            hasMakeupCredit: info?.hasMakeupCredit ?? false,
+                            makeupCredits: info?.makeupCredits ?? 0,
+                          };
+                        })}
                     />
                   ) : null}
                 </div>

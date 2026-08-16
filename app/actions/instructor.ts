@@ -52,14 +52,27 @@ export async function instructorBookClass(formData: FormData) {
   if (!active) return;
 
   const membershipId = active.membership.id;
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { makeupCredits: true },
+  });
+  const hasRegularCredit =
+    active.membership.creditsRemaining === null || active.membership.creditsRemaining > 0;
+  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+
+  const creditSource = String(formData.get("creditSource") || "auto");
   let fromMakeupCredit = false;
-  if (active.membership.creditsRemaining !== null && active.membership.creditsRemaining <= 0) {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: { makeupCredits: true },
-    });
-    fromMakeupCredit = Boolean(user && user.makeupCredits > 0);
-    if (!fromMakeupCredit) return;
+  if (creditSource === "makeup") {
+    if (!hasMakeupCredit) return;
+    fromMakeupCredit = true;
+  } else if (creditSource === "regular") {
+    if (!hasRegularCredit) return;
+    fromMakeupCredit = false;
+  } else {
+    if (!hasRegularCredit) {
+      if (!hasMakeupCredit) return;
+      fromMakeupCredit = true;
+    }
   }
 
   await db
