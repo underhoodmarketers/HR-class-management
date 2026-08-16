@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, locationExpenses, locationRevenueHistory, locations, memberships } from "@/db/schema";
+import { classSessions, locationExpenses, locationRevenueHistory, locations, memberships, zellePayments } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { addLocationExpense, deleteLocationExpense } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
@@ -73,7 +73,7 @@ export default async function LocationFinancesPage({
 
   const now = new Date();
 
-  const [allLocations, sessions, expenses, revenueHistory, liveMemberships] = await Promise.all([
+  const [allLocations, sessions, expenses, revenueHistory, candidateMemberships, approvedZellePayments] = await Promise.all([
     db.select().from(locations),
     db.query.classSessions.findMany({
       where: and(lt(classSessions.startsAt, now), eq(classSessions.canceled, false)),
@@ -87,7 +87,25 @@ export default async function LocationFinancesPage({
         user: { columns: { name: true }, with: { locations: true } },
       },
     }),
+    db.query.zellePayments.findMany({
+      where: eq(zellePayments.status, "approved"),
+      columns: { membershipId: true },
+    }),
   ]);
+
+  // A membership only represents real, already-collected revenue if it went
+  // through actual payment processing (Stripe or an approved Zelle) — an
+  // admin can type "one_time"/"recurring"/"zelle" as the billing type when
+  // manually backfilling a customer's pre-existing package (e.g. onboarding
+  // them from paper records), which isn't a new sale. Those customers'
+  // real historical payment already lives in locationRevenueHistory, so
+  // counting the backfilled membership here too would double it.
+  const zelleApprovedMembershipIds = new Set(
+    approvedZellePayments.map((z) => z.membershipId).filter((id): id is number => id !== null)
+  );
+  const liveMemberships = candidateMemberships.filter(
+    (m) => m.stripeSessionId !== null || zelleApprovedMembershipIds.has(m.id)
+  );
 
   const banner =
     searchParams.error && errorMessages[searchParams.error]
