@@ -99,7 +99,7 @@ export default async function PortalHome({
             <p className="mt-1 font-display text-2xl font-600">{active.membership.package.name}</p>
             <div className="mt-4 flex flex-wrap gap-6 text-sm">
               <div>
-                <p className="text-white/60">Classes left</p>
+                <p className="text-white/60">Classes left in this package</p>
                 <p className="text-lg font-600">
                   {active.membership.creditsRemaining === null
                     ? "Unlimited"

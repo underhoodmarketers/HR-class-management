@@ -49,17 +49,31 @@ export async function bookClass(formData: FormData) {
     isFirstBookingEver = priorBookings === 0;
   }
 
-  // Credit check (null credits = unlimited). Once this package's own
-  // per-cycle credits are used up, borrow from the never-expiring makeup
-  // credit pool before blocking the booking.
+  // Credit check (null credits = unlimited). "auto" (the default, and the
+  // only option when just one type is available) keeps the old waterfall:
+  // draw from the package's own credits first, falling back to the
+  // never-expiring makeup pool only once those run out. When both are
+  // available, the customer can explicitly choose which to use.
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.userId),
+    columns: { makeupCredits: true },
+  });
+  const hasRegularCredit = membership.creditsRemaining === null || membership.creditsRemaining > 0;
+  const hasMakeupCredit = Boolean(user && user.makeupCredits > 0);
+
+  const creditSource = String(formData.get("creditSource") || "auto");
   let fromMakeupCredit = false;
-  if (membership.creditsRemaining !== null && membership.creditsRemaining <= 0) {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, session.userId),
-      columns: { makeupCredits: true },
-    });
-    if (!user || user.makeupCredits <= 0) return;
+  if (creditSource === "makeup") {
+    if (!hasMakeupCredit) return;
     fromMakeupCredit = true;
+  } else if (creditSource === "regular") {
+    if (!hasRegularCredit) return;
+    fromMakeupCredit = false;
+  } else {
+    if (!hasRegularCredit) {
+      if (!hasMakeupCredit) return;
+      fromMakeupCredit = true;
+    }
   }
 
   await db.insert(bookings).values({

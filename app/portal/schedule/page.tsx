@@ -1,17 +1,22 @@
 import Link from "next/link";
 import { and, gte, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions } from "@/db/schema";
+import { classSessions, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
-import { bookClass } from "@/app/actions/booking";
-import { formatDay, formatTime } from "@/lib/utils";
+import PortalScheduleList from "@/components/PortalScheduleList";
 
 export const dynamic = "force-dynamic";
 
 export default async function SchedulePage() {
   const session = await requireUser();
-  const active = await getActiveMembership(session.userId);
+  const [active, profile] = await Promise.all([
+    getActiveMembership(session.userId),
+    db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+      columns: { makeupCredits: true },
+    }),
+  ]);
 
   if (!active) {
     return (
@@ -47,8 +52,10 @@ export default async function SchedulePage() {
     limit: 60,
   });
 
-  const noCredits =
-    membership.creditsRemaining !== null && membership.creditsRemaining <= 0;
+  const makeupCredits = profile?.makeupCredits ?? 0;
+  const hasRegularCredit = membership.creditsRemaining === null || membership.creditsRemaining > 0;
+  const hasMakeupCredit = makeupCredits > 0;
+  const noCredits = !hasRegularCredit && !hasMakeupCredit;
 
   return (
     <div className="space-y-6">
@@ -59,11 +66,18 @@ export default async function SchedulePage() {
             Classes included in {membership.package.name}.
           </p>
         </div>
-        <span className="badge bg-blush text-magenta-deep">
-          {membership.creditsRemaining === null
-            ? "Unlimited"
-            : `${membership.creditsRemaining} left`}
-        </span>
+        <div className="flex gap-1.5">
+          <span className="badge bg-blush text-magenta-deep">
+            {membership.creditsRemaining === null
+              ? "Unlimited"
+              : `${membership.creditsRemaining} left`}
+          </span>
+          {hasMakeupCredit ? (
+            <span className="badge bg-sky-100 text-sky-700">
+              {makeupCredits} makeup credit{makeupCredits === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {noCredits ? (
@@ -73,46 +87,25 @@ export default async function SchedulePage() {
         </div>
       ) : null}
 
-      {sessions.length === 0 ? (
-        <div className="card p-8 text-center text-ink/50">No upcoming classes scheduled.</div>
-      ) : (
-        <ul className="space-y-3">
-          {sessions.map((s) => {
-            const booked = s.bookings.filter((b) => b.status === "booked");
-            const isBooked = booked.some((b) => b.userId === session.userId);
-            const full = booked.length >= s.capacity;
-            return (
-              <li key={s.id} className="card flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  <span className="h-10 w-1.5 rounded-full" style={{ background: s.classType.color }} />
-                  <div>
-                    <p className="font-600">{s.classType.name}</p>
-                    <p className="text-sm text-ink/50">
-                      {s.location.name} · {formatDay(s.startsAt)} {formatTime(s.startsAt)}
-                    </p>
-                    <p className="text-xs text-ink/40">
-                      {booked.length}/{s.capacity} booked
-                      {s.instructor ? ` · ${s.instructor}` : ""}
-                    </p>
-                  </div>
-                </div>
-                {isBooked ? (
-                  <span className="badge bg-emerald-100 text-emerald-700">Booked</span>
-                ) : full ? (
-                  <span className="badge bg-ink/10 text-ink/50">Full</span>
-                ) : (
-                  <form action={bookClass}>
-                    <input type="hidden" name="sessionId" value={s.id} />
-                    <button className="btn-primary px-4 py-2 text-sm" disabled={noCredits}>
-                      Book
-                    </button>
-                  </form>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <PortalScheduleList
+        sessions={sessions.map((s) => {
+          const booked = s.bookings.filter((b) => b.status === "booked");
+          return {
+            id: s.id,
+            classTypeName: s.classType.name,
+            classTypeColor: s.classType.color,
+            locationName: s.location.name,
+            startsAt: s.startsAt,
+            instructor: s.instructor,
+            bookedCount: booked.length,
+            capacity: s.capacity,
+            isBooked: booked.some((b) => b.userId === session.userId),
+          };
+        })}
+        hasRegularCredit={hasRegularCredit}
+        hasMakeupCredit={hasMakeupCredit}
+        makeupCredits={makeupCredits}
+      />
     </div>
   );
 }
