@@ -4,6 +4,7 @@ import { and, eq, desc, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { locations, users, bookings, packages } from "@/db/schema";
 import { formatDay, formatMoney, formatTime } from "@/lib/utils";
+import { getAmountPaidCents } from "@/lib/queries";
 import { deleteCustomer } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import EditCustomerCard from "@/components/EditCustomerCard";
@@ -100,7 +101,7 @@ export default async function CustomerDetail({
   const totalAttended = allBookings.filter(attended).length;
 
   // Most recent Drop-In (trial) membership, if any, and its class booking —
-  // drives the "give a $20 trial credit code" prompt below.
+  // drives the "give a trial credit code" prompt below.
   const trialMembership = customer.memberships.find((m) => m.package.name === "Drop-In (1 Class)") ?? null;
   const trialBooking = trialMembership
     ? allBookings.find((b) => b.membershipId === trialMembership.id && b.status === "booked")
@@ -113,6 +114,7 @@ export default async function CustomerDetail({
     hoursSinceTrialClass !== null &&
     hoursSinceTrialClass >= 0 &&
     hoursSinceTrialClass <= 24 * 7;
+  const trialAmountPaidCents = trialMembership ? await getAmountPaidCents(trialMembership) : 0;
 
   const banner =
     searchParams.error && errorMessages[searchParams.error]
@@ -239,6 +241,7 @@ export default async function CustomerDetail({
           customerId={customer.id}
           membershipId={trialMembership.id}
           code={trialMembership.trialCreditCode}
+          amountPaidCents={trialAmountPaidCents}
           trialClassAt={trialClassAt}
         />
       ) : null}

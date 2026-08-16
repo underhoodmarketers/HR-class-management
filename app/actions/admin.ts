@@ -28,7 +28,13 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/guards";
 import { hashPassword } from "@/lib/auth";
-import { getActiveMembership, rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow } from "@/lib/queries";
+import {
+  getActiveMembership,
+  rolloverUnusedCredits,
+  applyOwedCredits,
+  computeMembershipWindow,
+  getAmountPaidCents,
+} from "@/lib/queries";
 import {
   fromStudioTime,
   addStudioWeeks,
@@ -1016,10 +1022,12 @@ export async function issueTrialCreditCode(formData: FormData) {
     redirect(`/admin/customers/${customerId}?error=trial_window_expired`);
   }
 
+  const amountOffCents = await getAmountPaidCents(membership);
+
   const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   try {
     const coupon = await stripe.coupons.create({
-      amount_off: 2000,
+      amount_off: amountOffCents,
       currency: "usd",
       duration: "once",
       name: `Trial credit (membership #${membership.id})`,

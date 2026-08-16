@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gt, lte, desc, asc, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships, packages, users } from "@/db/schema";
+import { memberships, packages, users, zellePayments } from "@/db/schema";
 import { DROP_IN_PACKAGE_NAME } from "./utils";
 
 export async function getActiveMembership(userId: number) {
@@ -159,4 +159,27 @@ export async function applyOwedCredits(
     .set({ creditsOwed: sql`${users.creditsOwed} - ${applied}` })
     .where(eq(users.id, userId));
   return credits - applied;
+}
+
+/**
+ * What a customer actually paid for a membership, in cents — the real
+ * Zelle amount if that's how they paid (which can differ from the
+ * package's list price), otherwise the package's list price as the best
+ * available figure (a Stripe purchase's exact charged amount, net of any
+ * promo code, isn't stored locally). Used by the trial-credit conversion so
+ * the $-off code matches what actually came in rather than a fixed guess.
+ */
+export async function getAmountPaidCents(membership: {
+  id: number;
+  billingType: string;
+  package: { priceCents: number };
+}): Promise<number> {
+  if (membership.billingType === "zelle") {
+    const zellePayment = await db.query.zellePayments.findFirst({
+      where: eq(zellePayments.membershipId, membership.id),
+      columns: { amountCents: true },
+    });
+    if (zellePayment) return zellePayment.amountCents;
+  }
+  return membership.package.priceCents;
 }
