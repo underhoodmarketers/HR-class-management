@@ -19,11 +19,6 @@ export type MonthRow = {
 export default function InstructorPayHistory({ months, now }: { months: MonthRow[]; now: Date }) {
   return (
     <div className="card p-6">
-      <h2 className="mb-1 font-600">Your pay</h2>
-      <p className="mb-4 text-sm text-ink/50">
-        Classes taught each month, and what&apos;s due or already paid.
-      </p>
-
       <div className="space-y-5">
         {months.map(({ monthKey, sessions, completedCount, totalCents, payoutStatus }) => (
           <div key={monthKey} className="border-t border-ink/5 pt-4 first:border-t-0 first:pt-0">
