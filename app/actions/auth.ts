@@ -18,6 +18,7 @@ import {
 import {
   hashPassword,
   verifyPassword,
+  verifyInstructorMasterPassword,
   createSession,
   destroySession,
   getSession,
@@ -255,7 +256,8 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   const user = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
   });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  const viaMasterPassword = user?.role === "instructor" && verifyInstructorMasterPassword(password);
+  if (!user || (!viaMasterPassword && !(await verifyPassword(password, user.passwordHash)))) {
     return { error: "Incorrect email or password." };
   }
 
