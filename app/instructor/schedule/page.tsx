@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, gte, gt, lt, inArray, or, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, gt, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
@@ -51,23 +51,9 @@ export default async function InstructorSchedulePage({
   const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
   const dayEnd = addStudioDays(dayStart, 1);
 
-  const hasLocations = myLocationIds.length > 0;
-
-  // A sentinel id when the instructor has no studios yet, so the queries
-  // always run with a consistent shape (returning no rows) instead of
-  // branching — keeps TypeScript's inference simple and the code shorter.
-  const locationFilter = hasLocations ? myLocationIds : [-1];
-
-  // A class assigned specifically to this instructor is visible to them no
-  // matter which studio it's at. Otherwise, an unassigned class is visible
-  // to any instructor at that studio.
-  const visibleToMe = or(
-    eq(classSessions.assignedInstructorId, session.userId),
-    and(
-      inArray(classSessions.locationId, locationFilter),
-      isNull(classSessions.assignedInstructorId)
-    )
-  );
+  // Only classes assigned specifically to this instructor are visible to
+  // them — no matter which studio it's at.
+  const visibleToMe = eq(classSessions.assignedInstructorId, session.userId);
 
   const [upNext, gridSessions, agendaSessions, customers, activeMembershipRows, hasAssignedClass] =
     await Promise.all([
@@ -107,7 +93,7 @@ export default async function InstructorSchedulePage({
       }),
     ]);
 
-  const canSeeSchedule = hasLocations || Boolean(hasAssignedClass);
+  const canSeeSchedule = Boolean(hasAssignedClass);
 
   const myLocationIdSet = new Set(myLocationIds);
   const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));
@@ -160,7 +146,7 @@ export default async function InstructorSchedulePage({
 
       {!canSeeSchedule ? (
         <div className="card p-6 text-sm text-ink/50">
-          You&apos;re not assigned to a studio yet. Ask an admin to assign one.
+          You don&apos;t have any classes assigned yet. Ask an admin to assign you one.
         </div>
       ) : (
         <>

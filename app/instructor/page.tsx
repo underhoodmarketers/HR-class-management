@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
@@ -40,19 +40,10 @@ export default async function InstructorDashboardPage({
   const myLocationIds = myLocations.map((l) => l.locationId);
   const myLocationIdSet = new Set(myLocationIds);
   const myLocationNames = myLocations.map((l) => l.location.name).join(", ");
-  const hasLocations = myLocationIds.length > 0;
-  const locationFilter = hasLocations ? myLocationIds : [-1];
 
-  // A class assigned specifically to this instructor is visible to them no
-  // matter which studio it's at. Otherwise, an unassigned class is visible
-  // to any instructor at that studio.
-  const visibleToMe = or(
-    eq(classSessions.assignedInstructorId, session.userId),
-    and(
-      inArray(classSessions.locationId, locationFilter),
-      isNull(classSessions.assignedInstructorId)
-    )
-  );
+  // Only classes assigned specifically to this instructor are visible to
+  // them — no matter which studio it's at.
+  const visibleToMe = eq(classSessions.assignedInstructorId, session.userId);
 
   const [customers, upcomingSessions, hasAssignedClass] = await Promise.all([
     db.query.users.findMany({
@@ -71,7 +62,7 @@ export default async function InstructorDashboardPage({
     }),
   ]);
 
-  const canSeeSchedule = hasLocations || Boolean(hasAssignedClass);
+  const canSeeSchedule = Boolean(hasAssignedClass);
   const upNext = upcomingSessions[0] ?? null;
 
   // A customer is "yours" if any of their preferred studios is one you're assigned to.
@@ -123,7 +114,7 @@ export default async function InstructorDashboardPage({
 
       {!canSeeSchedule ? (
         <div className="card p-6 text-sm text-ink/50">
-          You&apos;re not assigned to a studio yet. Ask an admin to assign one.
+          You don&apos;t have any classes assigned yet. Ask an admin to assign you one.
         </div>
       ) : (
         <>
