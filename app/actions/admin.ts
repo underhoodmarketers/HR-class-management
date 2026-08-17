@@ -1042,10 +1042,13 @@ export async function issueTrialCreditCode(formData: FormData) {
     redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
   }
 
-  await db.update(memberships).set({ trialCreditCode: code }).where(eq(memberships.id, membershipId));
+  await db
+    .update(memberships)
+    .set({ trialCreditCode: code, trialCreditAmountCents: amountOffCents })
+    .where(eq(memberships.id, membershipId));
 
   revalidatePath(`/admin/customers/${customerId}`);
-  redirect(`/admin/customers/${customerId}?trial_code=${code}`);
+  redirect(`/admin/customers/${customerId}?trial_code=${code}&trial_code_amount=${amountOffCents}`);
 }
 
 /**

@@ -164,9 +164,13 @@ export const memberships = pgTable("memberships", {
   stripeSessionId: varchar("stripe_session_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
   billingType: varchar("billing_type", { length: 16 }).notNull().default("one_time"), // one_time | recurring
-  // Set once an admin issues a $20-off promo code converting this trial
+  // Set once an admin issues a $-off promo code converting this trial
   // (Drop-In) booking into credit toward a real package — null until then.
   trialCreditCode: varchar("trial_credit_code", { length: 50 }),
+  // The exact amount (in cents) that code is worth, captured at issuance —
+  // stored rather than recomputed later so it can't drift if the Drop-In's
+  // price changes afterward.
+  trialCreditAmountCents: integer("trial_credit_amount_cents"),
   // Set once the "expires in 7 days" / "expires today" emails go out, so the
   // daily cron never sends either one twice for the same membership.
   expiryReminderSentAt: timestamp("expiry_reminder_sent_at", { withTimezone: true }),

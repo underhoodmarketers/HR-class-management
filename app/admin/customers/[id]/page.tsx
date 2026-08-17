@@ -38,6 +38,7 @@ export default async function CustomerDetail({
     membership_unfrozen?: string;
     notes_updated?: string;
     trial_code?: string;
+    trial_code_amount?: string;
     from?: string;
   };
 }) {
@@ -114,7 +115,13 @@ export default async function CustomerDetail({
     hoursSinceTrialClass !== null &&
     hoursSinceTrialClass >= 0 &&
     hoursSinceTrialClass <= 24 * 7;
-  const trialAmountPaidCents = trialMembership ? await getAmountPaidCents(trialMembership) : 0;
+  // Once a code has been issued, its exact value is locked in on the
+  // membership row — use that instead of recomputing, so it can't drift
+  // from what the actual Stripe coupon is worth if the package's price
+  // changes later. Only compute live for the not-yet-issued preview.
+  const trialAmountPaidCents = trialMembership
+    ? trialMembership.trialCreditAmountCents ?? (await getAmountPaidCents(trialMembership))
+    : 0;
 
   const banner =
     searchParams.error && errorMessages[searchParams.error]
@@ -139,7 +146,14 @@ export default async function CustomerDetail({
       : searchParams.notes_updated
       ? { tone: "ok" as const, text: "Notes updated." }
       : searchParams.trial_code
-      ? { tone: "ok" as const, text: `Trial credit code created: ${searchParams.trial_code}` }
+      ? {
+          tone: "ok" as const,
+          text: `Trial credit code created: ${searchParams.trial_code}${
+            searchParams.trial_code_amount
+              ? ` — worth ${formatMoney(Number(searchParams.trial_code_amount))}`
+              : ""
+          }`,
+        }
       : null;
 
   return (
