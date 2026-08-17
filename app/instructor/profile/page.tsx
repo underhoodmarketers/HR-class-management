@@ -87,7 +87,7 @@ export default async function InstructorProfilePage({
         totalCents: completedCount * INSTRUCTOR_RATE_CENTS,
         payoutStatus: (payoutByMonth.get(monthKey)?.status as "due" | "paid" | undefined) ?? "due",
       };
-    });
+    }).reverse(); // latest month first
   }
 
   const banner =
