@@ -23,11 +23,6 @@ export const INSTRUCTOR_RATE_CENTS = 2500;
 // name since packages have no dedicated "type" field.
 export const DROP_IN_PACKAGE_NAME = "Drop-In (1 Class)";
 
-// Pilot: the instructor-facing pay history tab only shows for these
-// instructor accounts until it's reviewed and approved to roll out to
-// everyone else. Prerna (31), Priyanka (32), Dia (29), Prachi (33).
-export const PAY_HISTORY_PILOT_INSTRUCTOR_IDS = [31, 32, 29, 33];
-
 // Stripe's standard US card rate.
 const STRIPE_PERCENT = 0.029;
 const STRIPE_FIXED_CENTS = 30;

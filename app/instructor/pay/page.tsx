@@ -1,25 +1,14 @@
-import { redirect } from "next/navigation";
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { classSessions, instructorPayouts, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
-import {
-  fromStudioTime,
-  studioDateKey,
-  shiftMonthKey,
-  INSTRUCTOR_RATE_CENTS,
-  PAY_HISTORY_PILOT_INSTRUCTOR_IDS,
-} from "@/lib/utils";
+import { fromStudioTime, studioDateKey, shiftMonthKey, INSTRUCTOR_RATE_CENTS } from "@/lib/utils";
 import InstructorPayHistory, { type MonthRow } from "@/components/InstructorPayHistory";
 
 export const dynamic = "force-dynamic";
 
 export default async function InstructorPayPage() {
   const session = await requireInstructor();
-  if (!PAY_HISTORY_PILOT_INSTRUCTOR_IDS.includes(session.userId)) {
-    redirect("/instructor/profile");
-  }
-
   const profile = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
   if (!profile) return null;
 

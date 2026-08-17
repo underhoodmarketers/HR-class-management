@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { requireInstructor } from "@/lib/guards";
 import { logoutAction } from "@/app/actions/auth";
-import { PAY_HISTORY_PILOT_INSTRUCTOR_IDS } from "@/lib/utils";
 import MobileNav from "@/components/MobileNav";
 
 export const dynamic = "force-dynamic";
+
+const nav = [
+  { href: "/instructor", label: "Dashboard" },
+  { href: "/instructor/customers", label: "Customers" },
+  { href: "/instructor/schedule", label: "Schedule" },
+  { href: "/instructor/leaderboard", label: "Leaderboard" },
+  { href: "/instructor/pay", label: "Pay" },
+  { href: "/instructor/profile", label: "Profile" },
+];
 
 export default async function InstructorLayout({
   children,
@@ -12,17 +20,6 @@ export default async function InstructorLayout({
   children: React.ReactNode;
 }) {
   const session = await requireInstructor();
-
-  const nav = [
-    { href: "/instructor", label: "Dashboard" },
-    { href: "/instructor/customers", label: "Customers" },
-    { href: "/instructor/schedule", label: "Schedule" },
-    { href: "/instructor/leaderboard", label: "Leaderboard" },
-    ...(PAY_HISTORY_PILOT_INSTRUCTOR_IDS.includes(session.userId)
-      ? [{ href: "/instructor/pay", label: "Pay" }]
-      : []),
-    { href: "/instructor/profile", label: "Profile" },
-  ];
 
   return (
     <div className="min-h-screen bg-cream lg:grid lg:grid-cols-[240px_1fr]">
