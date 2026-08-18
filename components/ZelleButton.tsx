@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { requestZellePayment } from "@/app/actions/zelle";
 import { SubmitButton } from "./SubmitButton";
-import StartDatePicker from "@/components/StartDatePicker";
+import SchedulePicker from "@/components/SchedulePicker";
 import { formatMoney } from "@/lib/utils";
+
+type Slot = { locationId: number; weekday: number };
 
 export default function ZelleButton({
   packageId,
@@ -24,8 +26,8 @@ export default function ZelleButton({
   const [open, setOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [stage, setStage] = useState<"schedule" | "form">(isDropIn ? "form" : "schedule");
-  const [schedule, setSchedule] = useState<{ locationId: number | null; startDate: string | null }>({
-    locationId: null,
+  const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null }>({
+    slots: [],
     startDate: null,
   });
 
@@ -61,7 +63,7 @@ export default function ZelleButton({
 
             {stage === "schedule" ? (
               <div className="space-y-4">
-                <StartDatePicker packageId={packageId} onChange={setSchedule} />
+                <SchedulePicker packageId={packageId} onChange={setSchedule} />
                 <button type="button" onClick={() => setStage("form")} className="btn-primary w-full">
                   Continue
                 </button>
@@ -78,8 +80,8 @@ export default function ZelleButton({
 
                 <form action={requestZellePayment} className="space-y-3">
                   <input type="hidden" name="packageId" value={packageId} />
-                  {schedule.locationId ? (
-                    <input type="hidden" name="locationId" value={schedule.locationId} />
+                  {schedule.slots.length > 0 ? (
+                    <input type="hidden" name="slots" value={JSON.stringify(schedule.slots)} />
                   ) : null}
                   {schedule.startDate ? (
                     <input type="hidden" name="startDate" value={schedule.startDate} />

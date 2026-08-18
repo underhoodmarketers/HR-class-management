@@ -5,9 +5,18 @@ import Stripe from "stripe";
 import { db } from "@/db";
 import { memberships, packages, promoCodeRedemptions, users, dropInInvites } from "@/db/schema";
 import { stripe } from "@/lib/stripe";
-import { rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow } from "@/lib/queries";
+import { rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow, type AttendanceSlot } from "@/lib/queries";
 import { sendPackagePurchaseEmail, sendDropInInviteEmail } from "@/lib/email";
 import { fromStudioTime } from "@/lib/utils";
+
+function parseSlots(raw: string | undefined): AttendanceSlot[] {
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
 
 export const runtime = "nodejs";
 
@@ -107,15 +116,20 @@ export async function POST(req: NextRequest) {
         if (pkg) {
           // Queues behind any real package the customer is still using —
           // see computeMembershipWindow. A Drop-In is exempt either way. A
-          // start date picked at checkout is honored on top of that.
+          // start date and weekly schedule picked at checkout are honored
+          // on top of that — the schedule makes the end date count real
+          // scheduled classes instead of a flat calendar estimate.
           const requestedStartDate = checkout.metadata?.startDate
             ? fromStudioTime(`${checkout.metadata.startDate}T00:00`)
             : null;
+          const slots = parseSlots(checkout.metadata?.slots);
           const { startsAt, endsAt } = await computeMembershipWindow(
             userId,
             pkg.durationDays,
             pkg.name,
-            requestedStartDate
+            requestedStartDate,
+            slots,
+            pkg.credits
           );
 
           // A Drop-In bought in quantity > 1 can be split with friends —
@@ -147,7 +161,7 @@ export async function POST(req: NextRequest) {
                 creditsRemaining,
                 startsAt,
                 endsAt,
-                startDateConfirmed: Boolean(requestedStartDate),
+                startDateConfirmed: Boolean(requestedStartDate) || slots.length > 0,
                 stripeSessionId: checkout.id,
                 stripeSubscriptionId:
                   typeof checkout.subscription === "string" ? checkout.subscription : null,

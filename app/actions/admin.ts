@@ -34,6 +34,7 @@ import {
   applyOwedCredits,
   computeMembershipWindow,
   getAmountPaidCents,
+  type AttendanceSlot,
 } from "@/lib/queries";
 import {
   fromStudioTime,
@@ -1205,11 +1206,19 @@ export async function approveZellePayment(formData: FormData) {
   const requestedStartsAt = request.requestedStartDate
     ? fromStudioTime(`${request.requestedStartDate}T00:00`)
     : null;
+  let requestedSlots: AttendanceSlot[] = [];
+  try {
+    if (request.requestedSlots) requestedSlots = JSON.parse(request.requestedSlots);
+  } catch {
+    requestedSlots = [];
+  }
   const { startsAt, endsAt } = await computeMembershipWindow(
     request.userId,
     request.package.durationDays,
     request.package.name,
-    requestedStartsAt
+    requestedStartsAt,
+    requestedSlots,
+    request.package.credits
   );
   await rolloverUnusedCredits(request.userId);
   const creditsRemaining = await applyOwedCredits(request.userId, request.package.credits);
@@ -1222,7 +1231,7 @@ export async function approveZellePayment(formData: FormData) {
       creditsRemaining,
       startsAt,
       endsAt,
-      startDateConfirmed: Boolean(requestedStartsAt),
+      startDateConfirmed: Boolean(requestedStartsAt) || requestedSlots.length > 0,
       billingType: "zelle",
     })
     .returning();

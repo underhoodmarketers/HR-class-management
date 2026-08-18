@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, gt, gte, lt, lte, desc, asc, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { memberships, packages, users, zellePayments, classSessions } from "@/db/schema";
-import { DROP_IN_PACKAGE_NAME, addStudioDays, studioWeekday, studioDateKey } from "./utils";
+import { DROP_IN_PACKAGE_NAME, addStudioDays, studioWeekday, studioDateKey, fromStudioTime } from "./utils";
 
 export async function getActiveMembership(userId: number) {
   const now = new Date();
@@ -42,6 +42,66 @@ async function findCurrentRealMembership(userId: number) {
   });
 }
 
+/** A slot is one specific weekly commitment: this studio, on this weekday. */
+export type AttendanceSlot = { locationId: number; weekday: number };
+
+/**
+ * A package's weekly class pace (1/2/3), derived from its own credits and
+ * duration rather than its name — "Starter" always works out to 1/week,
+ * "Momentum Builder" 2/week, "Power Progress" 3/week, but computing it this
+ * way doesn't hardcode tier names.
+ */
+export function computePace(credits: number, durationDays: number): number {
+  const weeks = durationDays / 7;
+  return Math.max(1, Math.round(credits / weeks));
+}
+
+/**
+ * Counts forward through the REAL scheduled (non-canceled) classes at the
+ * chosen studio(s), on the specific weekday(s) the customer committed to,
+ * starting from `startDate` — and returns the day after whichever real
+ * class covers the package's final credit. This is what makes the end date
+ * "correct" instead of a flat calendar-weeks estimate: cancellations, a
+ * studio's actual weekly cadence, and multi-studio schedules all shift it
+ * naturally, exactly the way a customer would actually use the credits.
+ *
+ * Falls back to a flat pace-based estimate if the real schedule doesn't
+ * extend far enough into the future to find enough matching classes (e.g.
+ * a new studio's series hasn't been created that far out yet) — so a
+ * purchase never fails just because the calendar isn't fully populated.
+ */
+export async function computeScheduleEndDate(
+  slots: AttendanceSlot[],
+  startDate: Date,
+  totalCredits: number
+): Promise<Date> {
+  const locationIds = [...new Set(slots.map((s) => s.locationId))];
+  const slotKeys = new Set(slots.map((s) => `${s.locationId}:${s.weekday}`));
+  const horizon = addStudioDays(startDate, 400);
+
+  const sessions = await db.query.classSessions.findMany({
+    where: and(
+      inArray(classSessions.locationId, locationIds),
+      eq(classSessions.canceled, false),
+      gte(classSessions.startsAt, startDate),
+      lt(classSessions.startsAt, horizon)
+    ),
+    columns: { startsAt: true, locationId: true },
+    orderBy: [classSessions.startsAt],
+  });
+  const matching = sessions.filter((s) => slotKeys.has(`${s.locationId}:${studioWeekday(s.startsAt)}`));
+
+  const lastClassAt =
+    matching.length >= totalCredits
+      ? matching[totalCredits - 1].startsAt
+      : // Not enough real classes on the books that far out — estimate using
+        // the pace implied by however many slots were chosen per week.
+        addStudioDays(startDate, Math.ceil((totalCredits / slots.length) * 7) - 1);
+
+  const dayAfter = addStudioDays(lastClassAt, 1);
+  return fromStudioTime(`${studioDateKey(dayAfter)}T23:59`);
+}
+
 /**
  * A customer can only ever be using one package at a time — if they buy a
  * new one while a real package is still active, the new one queues up and
@@ -52,13 +112,17 @@ async function findCurrentRealMembership(userId: number) {
  *
  * `preferredStartsAt` is an explicit start date the customer picked at
  * checkout — honored as long as it doesn't create an overlap; the later of
- * the two always wins.
+ * the two always wins. When `slots` + `totalCredits` are given, the end
+ * date is computed from the real schedule (see computeScheduleEndDate)
+ * instead of a flat durationDays estimate.
  */
 export async function computeMembershipWindow(
   userId: number,
   durationDays: number,
   packageName: string,
-  preferredStartsAt?: Date | null
+  preferredStartsAt?: Date | null,
+  slots?: AttendanceSlot[] | null,
+  totalCredits?: number | null
 ): Promise<{ startsAt: Date; endsAt: Date }> {
   const now = new Date();
   const current = packageName === DROP_IN_PACKAGE_NAME ? null : await findCurrentRealMembership(userId);
@@ -67,6 +131,12 @@ export async function computeMembershipWindow(
     preferredStartsAt && preferredStartsAt.getTime() > queueStartsAt.getTime()
       ? preferredStartsAt
       : queueStartsAt;
+
+  if (slots && slots.length > 0 && totalCredits) {
+    const endsAt = await computeScheduleEndDate(slots, startsAt, totalCredits);
+    return { startsAt, endsAt };
+  }
+
   // durationDays counts the start day itself as day 1.
   const endsAt = new Date(startsAt.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
   return { startsAt, endsAt };
@@ -230,4 +300,40 @@ export async function getAmountPaidCents(membership: {
     if (zellePayment) return zellePayment.amountCents;
   }
   return membership.package.priceCents;
+}
+
+/**
+ * Validates a customer-submitted set of attendance slots against reality —
+ * each one's studio must actually be allowed for this package, and its
+ * weekday must be one that studio really runs on. Shared by the Stripe and
+ * Zelle purchase paths so a tampered request can't smuggle in a fake
+ * schedule either way. Always empty for a Drop-In, which doesn't have a
+ * weekly schedule concept.
+ */
+export async function resolveAttendanceSlots(
+  pkg: { name: string; locations: { locationId: number }[] },
+  rawSlots: AttendanceSlot[]
+): Promise<AttendanceSlot[]> {
+  if (pkg.name === DROP_IN_PACKAGE_NAME || rawSlots.length === 0) return [];
+  const allowedLocationIds = pkg.locations.map((l) => l.locationId);
+  const validated: AttendanceSlot[] = [];
+  for (const slot of rawSlots) {
+    const locationAllowed = allowedLocationIds.length === 0 || allowedLocationIds.includes(slot.locationId);
+    if (!locationAllowed) continue;
+    const weekdays = await getLocationClassWeekdays(slot.locationId);
+    if (weekdays.includes(slot.weekday)) validated.push(slot);
+  }
+  return validated;
+}
+
+/**
+ * A submitted start date is only honored if it's a real future date that
+ * lands on one of the already-validated attendance slots' weekdays.
+ */
+export function resolveStartDate(slots: AttendanceSlot[], rawStartDate: string | undefined | null): string | null {
+  if (slots.length === 0 || !rawStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawStartDate)) return null;
+  const parsed = fromStudioTime(`${rawStartDate}T00:00`);
+  const isFuture = studioDateKey(parsed) >= studioDateKey(new Date());
+  const matchesAnySlot = slots.some((s) => s.weekday === studioWeekday(parsed));
+  return isFuture && matchesAnySlot ? rawStartDate : null;
 }

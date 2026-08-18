@@ -7,9 +7,16 @@ import { db } from "@/db";
 import { memberships, packages, users, userLocations, locations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { stripeFeeCents, studioDateKey, studioWeekday, fromStudioTime, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
+import { stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import { resolvePromoCode } from "@/lib/promoCodes";
-import { getLocationClassWeekdays, nearestMatchingDate } from "@/lib/queries";
+import {
+  getLocationClassWeekdays,
+  nearestMatchingDate,
+  computePace,
+  resolveAttendanceSlots,
+  resolveStartDate,
+  type AttendanceSlot,
+} from "@/lib/queries";
 
 const MIN_CANCEL_NOTICE_SECONDS = 28 * 24 * 60 * 60; // 4 weeks
 const MAX_DROP_IN_QUANTITY = 6;
@@ -59,16 +66,32 @@ export async function getPackageLocationOptions(
 }
 
 /**
- * Which days of the week a studio actually runs classes on, plus the
- * nearest upcoming date matching that pattern — drives the start-date
- * picker's restricted calendar and its default selection.
+ * A package's weekly class pace and total credits — how many specific
+ * weekday slots (across one or two studios) the customer needs to pick so
+ * the real end date can be counted correctly. Null for unlimited packages,
+ * which have no pace concept.
  */
-export async function getLocationScheduleInfo(
-  locationId: number
-): Promise<{ weekdays: number[]; defaultDate: string | null }> {
-  const weekdays = await getLocationClassWeekdays(locationId);
-  const defaultDate = nearestMatchingDate(new Date(), weekdays);
-  return { weekdays, defaultDate };
+export async function getPackagePaceInfo(
+  packageId: number
+): Promise<{ pace: number; totalCredits: number } | null> {
+  const pkg = await db.query.packages.findFirst({ where: eq(packages.id, packageId) });
+  if (!pkg || pkg.credits === null) return null;
+  return { pace: computePace(pkg.credits, pkg.durationDays), totalCredits: pkg.credits };
+}
+
+/** Which days of the week a studio actually runs classes on. */
+export async function getLocationWeekdays(locationId: number): Promise<number[]> {
+  return getLocationClassWeekdays(locationId);
+}
+
+/**
+ * The nearest upcoming date matching ANY of the chosen attendance slots
+ * (which may span two studios) — the default start date once a customer
+ * has picked their weekly schedule.
+ */
+export async function getNearestSlotDate(slots: AttendanceSlot[]): Promise<string | null> {
+  const weekdays = [...new Set(slots.map((s) => s.weekday))];
+  return nearestMatchingDate(new Date(), weekdays);
 }
 
 /**
@@ -82,7 +105,7 @@ export async function createEmbeddedCheckout(
   promoCode?: string,
   quantity: number = 1,
   friends: FriendInvite[] = [],
-  locationId?: number,
+  slots: AttendanceSlot[] = [],
   startDate?: string
 ): Promise<{ clientSecret: string } | { error: string }> {
   const session = await requireUser();
@@ -93,28 +116,13 @@ export async function createEmbeddedCheckout(
   });
   if (!pkg || !pkg.active) return { error: "That package is no longer available." };
 
-  // A chosen studio + start date is only meaningful for a real recurring
-  // package, not a Drop-In (which starts immediately regardless) — silently
-  // dropped otherwise so a tampered request can't smuggle in a fake window.
-  const isRealPackage = pkg.name !== DROP_IN_PACKAGE_NAME;
-  let resolvedLocationId: number | null = null;
-  let resolvedStartDate: string | null = null;
-  if (isRealPackage && locationId) {
-    const allowedLocationIds = pkg.locations.map((l) => l.locationId);
-    const locationAllowed = allowedLocationIds.length === 0 || allowedLocationIds.includes(locationId);
-    if (locationAllowed) {
-      resolvedLocationId = locationId;
-      if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-        const parsed = fromStudioTime(`${startDate}T00:00`);
-        const weekdays = await getLocationClassWeekdays(locationId);
-        const isFuture = studioDateKey(parsed) >= studioDateKey(new Date());
-        const matchesSchedule = weekdays.length === 0 || weekdays.includes(studioWeekday(parsed));
-        if (isFuture && matchesSchedule) {
-          resolvedStartDate = startDate;
-        }
-      }
-    }
-  }
+  // A chosen weekly schedule + start date is only meaningful for a real
+  // package, not a Drop-In (which starts immediately regardless) — both
+  // resolve to empty/null for a Drop-In, and each slot is validated for
+  // real (studio allowed for this package, weekday it actually runs on)
+  // so a tampered request can't smuggle in a fake window.
+  const resolvedSlots = await resolveAttendanceSlots(pkg, slots);
+  const resolvedStartDate = resolveStartDate(resolvedSlots, startDate);
 
   if (billingType === "recurring" && (!pkg.recurringPriceCents || !pkg.billingWeeks)) {
     return { error: "Autopay isn't available for that package." };
@@ -166,7 +174,7 @@ export async function createEmbeddedCheckout(
     ...(appliedPromoCodeId ? { promoCodeId: String(appliedPromoCodeId) } : {}),
     ...(isDropIn ? { quantity: String(quantity) } : {}),
     ...(isDropIn && friends.length > 0 ? { friends: JSON.stringify(friends) } : {}),
-    ...(resolvedLocationId ? { startLocationId: String(resolvedLocationId) } : {}),
+    ...(resolvedSlots.length > 0 ? { slots: JSON.stringify(resolvedSlots) } : {}),
     ...(resolvedStartDate ? { startDate: resolvedStartDate } : {}),
   };
 

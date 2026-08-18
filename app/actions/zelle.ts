@@ -6,8 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { packages, zellePayments } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
-import { studioDateKey, studioWeekday, fromStudioTime, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
-import { getLocationClassWeekdays } from "@/lib/queries";
+import { resolveAttendanceSlots, resolveStartDate, type AttendanceSlot } from "@/lib/queries";
 
 export async function requestZellePayment(formData: FormData) {
   const session = await requireUser();
@@ -24,29 +23,15 @@ export async function requestZellePayment(formData: FormData) {
   });
   if (!pkg || !pkg.active) redirect("/portal/packages?error=unavailable");
 
-  // A chosen studio + start date is only meaningful for a real package, not
-  // a Drop-In (which starts immediately regardless).
-  let locationId: number | null = null;
-  let requestedStartDate: string | null = null;
-  if (pkg.name !== DROP_IN_PACKAGE_NAME) {
-    const rawLocationId = Number(formData.get("locationId")) || null;
-    if (rawLocationId) {
-      const allowedLocationIds = pkg.locations.map((l) => l.locationId);
-      if (allowedLocationIds.length === 0 || allowedLocationIds.includes(rawLocationId)) {
-        locationId = rawLocationId;
-        const rawStartDate = String(formData.get("startDate") || "");
-        if (/^\d{4}-\d{2}-\d{2}$/.test(rawStartDate)) {
-          const parsed = fromStudioTime(`${rawStartDate}T00:00`);
-          const weekdays = await getLocationClassWeekdays(rawLocationId);
-          const isFuture = studioDateKey(parsed) >= studioDateKey(new Date());
-          const matchesSchedule = weekdays.length === 0 || weekdays.includes(studioWeekday(parsed));
-          if (isFuture && matchesSchedule) {
-            requestedStartDate = rawStartDate;
-          }
-        }
-      }
-    }
+  let rawSlots: AttendanceSlot[] = [];
+  try {
+    const raw = String(formData.get("slots") || "");
+    if (raw) rawSlots = JSON.parse(raw);
+  } catch {
+    rawSlots = [];
   }
+  const resolvedSlots = await resolveAttendanceSlots(pkg, rawSlots);
+  const resolvedStartDate = resolveStartDate(resolvedSlots, String(formData.get("startDate") || ""));
 
   await db.insert(zellePayments).values({
     userId: session.userId,
@@ -54,8 +39,8 @@ export async function requestZellePayment(formData: FormData) {
     amountCents: pkg.priceCents,
     confirmationNumber,
     status: "pending",
-    locationId,
-    requestedStartDate,
+    requestedSlots: resolvedSlots.length > 0 ? JSON.stringify(resolvedSlots) : null,
+    requestedStartDate: resolvedStartDate,
   });
 
   revalidatePath("/portal/packages");
