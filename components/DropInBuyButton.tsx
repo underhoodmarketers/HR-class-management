@@ -7,6 +7,7 @@ import {
   EmbeddedCheckout,
 } from "@stripe/react-stripe-js";
 import { createEmbeddedCheckout, validatePromoCode, type FriendInvite } from "@/app/actions/checkout";
+import DropInLocationPicker from "@/components/DropInLocationPicker";
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -166,6 +167,7 @@ export default function DropInBuyButton({
               </p>
             ) : stage === "details" ? (
               <div className="space-y-4 p-2">
+                <DropInLocationPicker packageId={packageId} />
                 <div>
                   <label className="label">How many Drop-Ins?</label>
                   <select

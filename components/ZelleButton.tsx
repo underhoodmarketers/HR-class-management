@@ -4,6 +4,7 @@ import { useState } from "react";
 import { requestZellePayment } from "@/app/actions/zelle";
 import { SubmitButton } from "./SubmitButton";
 import SchedulePicker from "@/components/SchedulePicker";
+import DropInLocationPicker from "@/components/DropInLocationPicker";
 import { formatMoney } from "@/lib/utils";
 
 type Slot = { locationId: number; weekday: number };
@@ -25,7 +26,7 @@ export default function ZelleButton({
 }) {
   const [open, setOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [stage, setStage] = useState<"schedule" | "form">(isDropIn ? "form" : "schedule");
+  const [stage, setStage] = useState<"schedule" | "location" | "form">(isDropIn ? "location" : "schedule");
   const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null }>({
     slots: [],
     startDate: null,
@@ -38,7 +39,7 @@ export default function ZelleButton({
       <button
         type="button"
         onClick={() => {
-          setStage(isDropIn ? "form" : "schedule");
+          setStage(isDropIn ? "location" : "schedule");
           setOpen(true);
         }}
         className={className}
@@ -64,6 +65,13 @@ export default function ZelleButton({
             {stage === "schedule" ? (
               <div className="space-y-4">
                 <SchedulePicker packageId={packageId} onChange={setSchedule} />
+                <button type="button" onClick={() => setStage("form")} className="btn-primary w-full">
+                  Continue
+                </button>
+              </div>
+            ) : stage === "location" ? (
+              <div className="space-y-4">
+                <DropInLocationPicker packageId={packageId} />
                 <button type="button" onClick={() => setStage("form")} className="btn-primary w-full">
                   Continue
                 </button>

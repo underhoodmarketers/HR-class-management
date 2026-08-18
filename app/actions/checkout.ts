@@ -95,6 +95,21 @@ export async function getNearestSlotDate(slots: AttendanceSlot[]): Promise<strin
 }
 
 /**
+ * Adds a studio to the customer's preferred studios (a no-op if it's
+ * already one) — used by the Drop-In studio picker, which doesn't have a
+ * weekly schedule to build like a real package does, so picking a studio
+ * there just updates the same preference editable from their profile.
+ */
+export async function addPreferredLocation(locationId: number): Promise<void> {
+  const session = await requireUser();
+  const existing = await db.query.userLocations.findFirst({
+    where: and(eq(userLocations.userId, session.userId), eq(userLocations.locationId, locationId)),
+  });
+  if (existing) return;
+  await db.insert(userLocations).values({ userId: session.userId, locationId });
+}
+
+/**
  * Creates a Stripe Checkout Session in embedded mode and returns its
  * client secret, so the payment form can render inline on our own page
  * instead of redirecting to checkout.stripe.com.
