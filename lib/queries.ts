@@ -1,8 +1,8 @@
 import "server-only";
-import { and, eq, gt, lte, desc, asc, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, lte, desc, asc, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships, packages, users, zellePayments } from "@/db/schema";
-import { DROP_IN_PACKAGE_NAME } from "./utils";
+import { memberships, packages, users, zellePayments, classSessions } from "@/db/schema";
+import { DROP_IN_PACKAGE_NAME, addStudioDays, studioWeekday, studioDateKey } from "./utils";
 
 export async function getActiveMembership(userId: number) {
   const now = new Date();
@@ -49,18 +49,66 @@ async function findCurrentRealMembership(userId: number) {
  * Drop-In is exempt on both sides: buying one always starts immediately
  * regardless of what else is active, and an active Drop-In never blocks or
  * delays a real package purchase.
+ *
+ * `preferredStartsAt` is an explicit start date the customer picked at
+ * checkout — honored as long as it doesn't create an overlap; the later of
+ * the two always wins.
  */
 export async function computeMembershipWindow(
   userId: number,
   durationDays: number,
-  packageName: string
+  packageName: string,
+  preferredStartsAt?: Date | null
 ): Promise<{ startsAt: Date; endsAt: Date }> {
   const now = new Date();
   const current = packageName === DROP_IN_PACKAGE_NAME ? null : await findCurrentRealMembership(userId);
-  const startsAt = current && current.package.name !== DROP_IN_PACKAGE_NAME ? current.endsAt : now;
+  const queueStartsAt = current && current.package.name !== DROP_IN_PACKAGE_NAME ? current.endsAt : now;
+  const startsAt =
+    preferredStartsAt && preferredStartsAt.getTime() > queueStartsAt.getTime()
+      ? preferredStartsAt
+      : queueStartsAt;
   // durationDays counts the start day itself as day 1.
   const endsAt = new Date(startsAt.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
   return { startsAt, endsAt };
+}
+
+/**
+ * Which days of the week (0=Sun) a studio actually runs classes on, based
+ * on the real upcoming schedule — the basis for restricting a start-date
+ * picker to dates that are actually useful (e.g. Coppell only ever runs
+ * Tuesdays and Saturdays). Empty if the studio has nothing scheduled yet.
+ */
+export async function getLocationClassWeekdays(locationId: number): Promise<number[]> {
+  const now = new Date();
+  const horizon = addStudioDays(now, 60);
+  const sessions = await db.query.classSessions.findMany({
+    where: and(
+      eq(classSessions.locationId, locationId),
+      eq(classSessions.canceled, false),
+      gte(classSessions.startsAt, now),
+      lt(classSessions.startsAt, horizon)
+    ),
+    columns: { startsAt: true },
+  });
+  const weekdays = new Set(sessions.map((s) => studioWeekday(s.startsAt)));
+  return Array.from(weekdays).sort();
+}
+
+/**
+ * The nearest date (studio time, "yyyy-mm-dd") on or after `from` that
+ * falls on one of the given weekdays — the sensible default start date
+ * when a customer doesn't pick one themselves. Null if there are no known
+ * class days to match against.
+ */
+export function nearestMatchingDate(from: Date, weekdays: number[]): string | null {
+  if (weekdays.length === 0) return null;
+  const weekdaySet = new Set(weekdays);
+  let d = from;
+  for (let i = 0; i < 14; i++) {
+    if (weekdaySet.has(studioWeekday(d))) return studioDateKey(d);
+    d = addStudioDays(d, 1);
+  }
+  return null;
 }
 
 /** Every currently-active membership, not just the one used for booking. */

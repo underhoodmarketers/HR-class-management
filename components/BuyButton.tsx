@@ -7,6 +7,7 @@ import {
   EmbeddedCheckout,
 } from "@stripe/react-stripe-js";
 import { createEmbeddedCheckout, validatePromoCode, type BillingType } from "@/app/actions/checkout";
+import StartDatePicker from "@/components/StartDatePicker";
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -26,26 +27,38 @@ export default function BuyButton({
   autoOpen?: boolean;
 }) {
   const [open, setOpen] = useState(Boolean(autoOpen));
-  const [stage, setStage] = useState<"promo" | "checkout">("promo");
+  const [stage, setStage] = useState<"schedule" | "promo" | "checkout">("schedule");
   const [error, setError] = useState<string | null>(null);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promoStatus, setPromoStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [checkingPromo, setCheckingPromo] = useState(false);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [schedule, setSchedule] = useState<{ locationId: number | null; startDate: string | null }>({
+    locationId: null,
+    startDate: null,
+  });
 
   const fetchClientSecret = useCallback(async () => {
-    const result = await createEmbeddedCheckout(packageId, billingType, appliedCode ?? undefined);
+    const result = await createEmbeddedCheckout(
+      packageId,
+      billingType,
+      appliedCode ?? undefined,
+      1,
+      [],
+      schedule.locationId ?? undefined,
+      schedule.startDate ?? undefined
+    );
     if ("error" in result) {
       setError(result.error);
       throw new Error(result.error);
     }
     return result.clientSecret;
-  }, [packageId, billingType, appliedCode]);
+  }, [packageId, billingType, appliedCode, schedule]);
 
   const handleClick = () => {
     setError(null);
-    setStage("promo");
+    setStage("schedule");
     setShowPromoInput(false);
     setPromoInput("");
     setPromoStatus(null);
@@ -99,6 +112,13 @@ export default function BuyButton({
               <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">
                 {error}
               </p>
+            ) : stage === "schedule" ? (
+              <div className="space-y-4 p-2">
+                <StartDatePicker packageId={packageId} onChange={setSchedule} />
+                <button type="button" onClick={() => setStage("promo")} className="btn-primary w-full">
+                  Continue
+                </button>
+              </div>
             ) : stage === "promo" ? (
               <div className="space-y-4 p-2">
                 <div>

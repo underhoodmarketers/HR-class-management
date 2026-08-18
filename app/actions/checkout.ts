@@ -4,11 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships, packages, users, userLocations } from "@/db/schema";
+import { memberships, packages, users, userLocations, locations } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { stripe, stripeConfigured } from "@/lib/stripe";
-import { stripeFeeCents, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
+import { stripeFeeCents, studioDateKey, studioWeekday, fromStudioTime, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 import { resolvePromoCode } from "@/lib/promoCodes";
+import { getLocationClassWeekdays, nearestMatchingDate } from "@/lib/queries";
 
 const MIN_CANCEL_NOTICE_SECONDS = 28 * 24 * 60 * 60; // 4 weeks
 const MAX_DROP_IN_QUANTITY = 6;
@@ -37,6 +38,40 @@ export async function validatePromoCode(
 }
 
 /**
+ * Studios a package can be used at, for the "where will you attend"
+ * picker — every active studio if the package has no location
+ * restriction (packageLocations has no rows for it), otherwise just the
+ * ones it's actually restricted to.
+ */
+export async function getPackageLocationOptions(
+  packageId: number
+): Promise<{ id: number; name: string }[]> {
+  const pkg = await db.query.packages.findFirst({
+    where: eq(packages.id, packageId),
+    with: { locations: { with: { location: true } } },
+  });
+  if (!pkg) return [];
+  if (pkg.locations.length > 0) {
+    return pkg.locations.map((pl) => ({ id: pl.location.id, name: pl.location.name }));
+  }
+  const all = await db.query.locations.findMany({ where: eq(locations.active, true) });
+  return all.map((l) => ({ id: l.id, name: l.name }));
+}
+
+/**
+ * Which days of the week a studio actually runs classes on, plus the
+ * nearest upcoming date matching that pattern — drives the start-date
+ * picker's restricted calendar and its default selection.
+ */
+export async function getLocationScheduleInfo(
+  locationId: number
+): Promise<{ weekdays: number[]; defaultDate: string | null }> {
+  const weekdays = await getLocationClassWeekdays(locationId);
+  const defaultDate = nearestMatchingDate(new Date(), weekdays);
+  return { weekdays, defaultDate };
+}
+
+/**
  * Creates a Stripe Checkout Session in embedded mode and returns its
  * client secret, so the payment form can render inline on our own page
  * instead of redirecting to checkout.stripe.com.
@@ -46,14 +81,40 @@ export async function createEmbeddedCheckout(
   billingType: BillingType,
   promoCode?: string,
   quantity: number = 1,
-  friends: FriendInvite[] = []
+  friends: FriendInvite[] = [],
+  locationId?: number,
+  startDate?: string
 ): Promise<{ clientSecret: string } | { error: string }> {
   const session = await requireUser();
 
   const pkg = await db.query.packages.findFirst({
     where: eq(packages.id, packageId),
+    with: { locations: true },
   });
   if (!pkg || !pkg.active) return { error: "That package is no longer available." };
+
+  // A chosen studio + start date is only meaningful for a real recurring
+  // package, not a Drop-In (which starts immediately regardless) — silently
+  // dropped otherwise so a tampered request can't smuggle in a fake window.
+  const isRealPackage = pkg.name !== DROP_IN_PACKAGE_NAME;
+  let resolvedLocationId: number | null = null;
+  let resolvedStartDate: string | null = null;
+  if (isRealPackage && locationId) {
+    const allowedLocationIds = pkg.locations.map((l) => l.locationId);
+    const locationAllowed = allowedLocationIds.length === 0 || allowedLocationIds.includes(locationId);
+    if (locationAllowed) {
+      resolvedLocationId = locationId;
+      if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        const parsed = fromStudioTime(`${startDate}T00:00`);
+        const weekdays = await getLocationClassWeekdays(locationId);
+        const isFuture = studioDateKey(parsed) >= studioDateKey(new Date());
+        const matchesSchedule = weekdays.length === 0 || weekdays.includes(studioWeekday(parsed));
+        if (isFuture && matchesSchedule) {
+          resolvedStartDate = startDate;
+        }
+      }
+    }
+  }
 
   if (billingType === "recurring" && (!pkg.recurringPriceCents || !pkg.billingWeeks)) {
     return { error: "Autopay isn't available for that package." };
@@ -105,6 +166,8 @@ export async function createEmbeddedCheckout(
     ...(appliedPromoCodeId ? { promoCodeId: String(appliedPromoCodeId) } : {}),
     ...(isDropIn ? { quantity: String(quantity) } : {}),
     ...(isDropIn && friends.length > 0 ? { friends: JSON.stringify(friends) } : {}),
+    ...(resolvedLocationId ? { startLocationId: String(resolvedLocationId) } : {}),
+    ...(resolvedStartDate ? { startDate: resolvedStartDate } : {}),
   };
 
   const checkout = await stripe.checkout.sessions.create(

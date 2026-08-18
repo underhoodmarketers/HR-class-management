@@ -193,6 +193,7 @@ export default async function PortalPackages({
                 priceCents={p.priceCents}
                 recipient={zelleSettingsRow?.recipient ?? null}
                 instructions={zelleSettingsRow?.instructions ?? null}
+                isDropIn={p.name === DROP_IN_PACKAGE_NAME}
                 className="btn-subtle w-full"
               />
               {zelleSettingsRow?.recipient ? (

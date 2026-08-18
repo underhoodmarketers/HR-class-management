@@ -154,6 +154,11 @@ export const memberships = pgTable("memberships", {
   creditsRemaining: integer("credits_remaining"), // null = unlimited
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  // True when the customer explicitly picked this membership's start date at
+  // checkout (vs. the default "first booking" behavior) — tells the booking
+  // flow to leave startsAt/endsAt alone instead of shifting them to whatever
+  // day the first class actually gets booked.
+  startDateConfirmed: boolean("start_date_confirmed").notNull().default(false),
   // When the current freeze started (admin-only pause) — null if not frozen.
   // On resume, the frozen span is added back onto endsAt so the customer
   // doesn't lose paid-for time, then this is cleared.
@@ -231,6 +236,11 @@ export const zellePayments = pgTable("zelle_payments", {
   membershipId: integer("membership_id").references(() => memberships.id, {
     onDelete: "set null",
   }),
+  // Which studio the customer intends to attend, and the start date they
+  // picked (if any) — applied to the real membership window once an admin
+  // approves this request.
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "set null" }),
+  requestedStartDate: date("requested_start_date"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 });
@@ -479,6 +489,7 @@ export const zellePaymentsRelations = relations(zellePayments, ({ one }) => ({
     fields: [zellePayments.membershipId],
     references: [memberships.id],
   }),
+  location: one(locations, { fields: [zellePayments.locationId], references: [locations.id] }),
 }));
 
 export const instructorLocationsRelations = relations(instructorLocations, ({ one }) => ({

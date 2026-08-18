@@ -40,7 +40,8 @@ export async function bookClass(formData: FormData) {
 
   // Purchased packages (not admin-added ones, which set dates deliberately)
   // don't start their clock until the customer's first booked class, so
-  // nobody loses days sitting on an unbooked package.
+  // nobody loses days sitting on an unbooked package — unless they already
+  // picked an explicit start date at checkout, which takes precedence.
   let isFirstBookingEver = false;
   if (["one_time", "recurring", "zelle"].includes(membership.billingType)) {
     const [{ count: priorBookings }] = await db
@@ -98,7 +99,7 @@ export async function bookClass(formData: FormData) {
       .where(eq(memberships.id, membership.id));
   }
 
-  if (isFirstBookingEver) {
+  if (isFirstBookingEver && !membership.startDateConfirmed) {
     const startsAt = new Date();
     // durationDays counts the start day itself as day 1.
     const endsAt = new Date(

@@ -7,6 +7,7 @@ import { memberships, packages, promoCodeRedemptions, users, dropInInvites } fro
 import { stripe } from "@/lib/stripe";
 import { rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow } from "@/lib/queries";
 import { sendPackagePurchaseEmail, sendDropInInviteEmail } from "@/lib/email";
+import { fromStudioTime } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -105,8 +106,17 @@ export async function POST(req: NextRequest) {
         });
         if (pkg) {
           // Queues behind any real package the customer is still using —
-          // see computeMembershipWindow. A Drop-In is exempt either way.
-          const { startsAt, endsAt } = await computeMembershipWindow(userId, pkg.durationDays, pkg.name);
+          // see computeMembershipWindow. A Drop-In is exempt either way. A
+          // start date picked at checkout is honored on top of that.
+          const requestedStartDate = checkout.metadata?.startDate
+            ? fromStudioTime(`${checkout.metadata.startDate}T00:00`)
+            : null;
+          const { startsAt, endsAt } = await computeMembershipWindow(
+            userId,
+            pkg.durationDays,
+            pkg.name,
+            requestedStartDate
+          );
 
           // A Drop-In bought in quantity > 1 can be split with friends —
           // each friend gets their own invite (and, once accepted, their
@@ -137,6 +147,7 @@ export async function POST(req: NextRequest) {
                 creditsRemaining,
                 startsAt,
                 endsAt,
+                startDateConfirmed: Boolean(requestedStartDate),
                 stripeSessionId: checkout.id,
                 stripeSubscriptionId:
                   typeof checkout.subscription === "string" ? checkout.subscription : null,

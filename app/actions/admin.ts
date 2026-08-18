@@ -1202,10 +1202,14 @@ export async function approveZellePayment(formData: FormData) {
   // accidental reject) — just never re-grant on an already-approved one.
   if (!request || request.status === "approved") return;
 
+  const requestedStartsAt = request.requestedStartDate
+    ? fromStudioTime(`${request.requestedStartDate}T00:00`)
+    : null;
   const { startsAt, endsAt } = await computeMembershipWindow(
     request.userId,
     request.package.durationDays,
-    request.package.name
+    request.package.name,
+    requestedStartsAt
   );
   await rolloverUnusedCredits(request.userId);
   const creditsRemaining = await applyOwedCredits(request.userId, request.package.credits);
@@ -1218,6 +1222,7 @@ export async function approveZellePayment(formData: FormData) {
       creditsRemaining,
       startsAt,
       endsAt,
+      startDateConfirmed: Boolean(requestedStartsAt),
       billingType: "zelle",
     })
     .returning();
