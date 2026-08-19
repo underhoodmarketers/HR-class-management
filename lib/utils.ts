@@ -237,6 +237,15 @@ export function addDaysToDateKey(dateKey: string, days: number): string {
   return `${ny}-${nm}-${nd}`;
 }
 
+/** Whole days between two "yyyy-mm-dd" keys (to - from), no timezone involved. */
+export function daysBetweenDateKeys(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const fromMs = Date.UTC(fy, fm - 1, fd);
+  const toMs = Date.UTC(ty, tm - 1, td);
+  return Math.round((toMs - fromMs) / 86400000);
+}
+
 export function monthLabel(monthKey: string) {
   const [y, m] = monthKey.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {

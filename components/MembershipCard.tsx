@@ -7,7 +7,7 @@ import {
   freezeMembership,
   unfreezeMembership,
 } from "@/app/actions/admin";
-import { formatDay, formatMoney, studioDateKey, parseFlexibleDate, addDaysToDateKey } from "@/lib/utils";
+import { formatDay, formatMoney, studioDateKey, parseFlexibleDate, addDaysToDateKey, daysBetweenDateKeys } from "@/lib/utils";
 import { SubmitButton } from "./SubmitButton";
 
 type Membership = {
@@ -316,6 +316,17 @@ function EditMembershipForm({
   const [startsAt, setStartsAt] = useState(studioDateKey(membership.startsAt));
   const [endsAt, setEndsAt] = useState(studioDateKey(membership.endsAt));
 
+  // Moving the start date shifts the end date by the same number of days,
+  // so the membership's existing length (including any past freeze
+  // extensions) is preserved instead of silently shrinking or growing.
+  function handleStartChange(value: string) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value) && /^\d{4}-\d{2}-\d{2}$/.test(startsAt)) {
+      const deltaDays = daysBetweenDateKeys(startsAt, value);
+      setEndsAt((prev) => addDaysToDateKey(prev, deltaDays));
+    }
+    setStartsAt(value);
+  }
+
   return (
     <form action={updateMembership} className="space-y-3">
       <input type="hidden" name="id" value={membership.id} />
@@ -341,13 +352,16 @@ function EditMembershipForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">First day</label>
-          <DateField name="startsAt" value={startsAt} onChange={setStartsAt} />
+          <DateField name="startsAt" value={startsAt} onChange={handleStartChange} />
         </div>
         <div>
           <label className="label">Last day</label>
           <DateField name="endsAt" value={endsAt} onChange={setEndsAt} />
         </div>
       </div>
+      <p className="text-xs text-ink/40">
+        Moving the first day shifts the last day by the same amount — edit it directly if you need a different length.
+      </p>
       <div>
         <label className="label">Credits remaining</label>
         <input
