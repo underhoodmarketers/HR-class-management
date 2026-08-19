@@ -206,11 +206,21 @@ export default async function CustomerDetail({
         <div className="card p-6">
           <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">Waiver</h2>
           {customer.signatures.length ? (
-            customer.signatures.map((s) => (
-              <p key={s.id} className="text-sm">
-                Signed “{s.signedName}” · v{s.version} · {formatDay(s.signedAt)}
-              </p>
-            ))
+            <ul className="space-y-1.5">
+              {customer.signatures.map((s) => (
+                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>
+                    Signed “{s.signedName}” · v{s.version} · {formatDay(s.signedAt)}
+                  </span>
+                  <a
+                    href={`/admin/customers/${customer.id}/waiver/${s.id}`}
+                    className="text-xs font-semibold text-magenta hover:underline"
+                  >
+                    Download
+                  </a>
+                </li>
+              ))}
+            </ul>
           ) : (
             <p className="text-sm text-amber-600">Not signed yet.</p>
           )}

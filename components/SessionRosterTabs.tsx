@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { adminCancelBooking } from "@/app/actions/admin";
 
 type RosterEntry = {
@@ -83,7 +84,9 @@ export default function SessionRosterTabs({
           {filtered.map((r) => (
             <li key={r.bookingId} className="px-4 py-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium">{r.name}</span>
+                <Link href={`/admin/customers/${r.userId}`} className="font-medium hover:text-magenta-deep hover:underline">
+                  {r.name}
+                </Link>
                 <span className="text-xs text-ink/40">
                   {formatSignedUpAt(r.signedUpAt)}
                 </span>
