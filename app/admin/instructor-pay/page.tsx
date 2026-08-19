@@ -22,10 +22,17 @@ const RATE_CENTS = INSTRUCTOR_RATE_CENTS;
 
 type GroupBy = "instructor" | "location";
 
+function buildUrl(base: Record<string, string | undefined>, overrides: Record<string, string>) {
+  const params = new URLSearchParams(
+    Object.entries({ ...base, ...overrides }).filter(([, v]) => v) as [string, string][]
+  );
+  return `/admin/instructor-pay?${params.toString()}`;
+}
+
 export default async function InstructorPayPage({
   searchParams,
 }: {
-  searchParams: { month?: string; saved?: string; view?: string };
+  searchParams: { month?: string; saved?: string; view?: string; id?: string };
 }) {
   await requireAdmin();
 
@@ -123,19 +130,19 @@ export default async function InstructorPayPage({
         <h2 className="font-600">{monthLabel(monthKey)}</h2>
         <div className="flex items-center gap-1.5">
           <Link
-            href={`/admin/instructor-pay?month=${prevMonth}${groupBy === "location" ? "&view=location" : ""}`}
+            href={buildUrl(searchParams, { month: prevMonth, id: "" })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             ‹
           </Link>
           <Link
-            href={`/admin/instructor-pay?month=${todayKey.slice(0, 7)}${groupBy === "location" ? "&view=location" : ""}`}
+            href={buildUrl(searchParams, { month: todayKey.slice(0, 7), id: "" })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             This month
           </Link>
           <Link
-            href={`/admin/instructor-pay?month=${nextMonth}${groupBy === "location" ? "&view=location" : ""}`}
+            href={buildUrl(searchParams, { month: nextMonth, id: "" })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             ›
@@ -152,7 +159,7 @@ export default async function InstructorPayPage({
         {(["instructor", "location"] as const).map((v) => (
           <Link
             key={v}
-            href={`/admin/instructor-pay?month=${monthKey}${v === "location" ? "&view=location" : ""}`}
+            href={buildUrl(searchParams, { view: v === "location" ? "location" : "", id: "" })}
             className={`rounded-full px-4 py-2 text-sm font-medium transition ${
               groupBy === v ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
             }`}
@@ -166,46 +173,93 @@ export default async function InstructorPayPage({
         rows.length === 0 ? (
           <div className="card p-8 text-center text-ink/40">No classes assigned this month.</div>
         ) : (
-          rows.map(({ instructor, sessions: mySessions, completedCount, totalCents, payout }) => (
-            <InstructorPayCard
-              key={instructor.id}
-              instructorId={instructor.id}
-              name={instructor.name}
-              sessions={mySessions}
-              completedCount={completedCount}
-              totalCents={totalCents}
-              payout={payout}
-              monthKey={monthKey}
-              now={now}
-              showLocation
-            />
-          ))
+          (() => {
+            const selectedId = searchParams.id ? Number(searchParams.id) : rows[0].instructor.id;
+            const active = rows.find((r) => r.instructor.id === selectedId) ?? rows[0];
+            return (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {rows.map((r) => (
+                    <Link
+                      key={r.instructor.id}
+                      href={buildUrl(searchParams, { id: String(r.instructor.id) })}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        r.instructor.id === active.instructor.id
+                          ? "bg-magenta text-white"
+                          : "bg-blush/40 text-ink/60 hover:bg-blush"
+                      }`}
+                    >
+                      {r.instructor.name}{" "}
+                      <span className={r.instructor.id === active.instructor.id ? "text-white/80" : "text-ink/40"}>
+                        ({formatMoney(r.totalCents)})
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+                <InstructorPayCard
+                  instructorId={active.instructor.id}
+                  name={active.instructor.name}
+                  sessions={active.sessions}
+                  completedCount={active.completedCount}
+                  totalCents={active.totalCents}
+                  payout={active.payout}
+                  monthKey={monthKey}
+                  now={now}
+                  showLocation
+                />
+              </>
+            );
+          })()
         )
       ) : locationGroups.length === 0 ? (
         <div className="card p-8 text-center text-ink/40">No classes assigned this month.</div>
       ) : (
-        locationGroups.map(({ location, entries, locationTotalCents }) => (
-          <div key={location.id} className="space-y-3">
-            <div className="flex items-baseline justify-between">
-              <h3 className="font-display text-lg font-600">{location.name}</h3>
-              <p className="text-sm text-ink/50">{formatMoney(locationTotalCents)}</p>
-            </div>
-            {entries.map(({ instructor, sessions: mySessions, completedCount, totalCents, payout }) => (
-              <InstructorPayCard
-                key={instructor.id}
-                instructorId={instructor.id}
-                name={instructor.name}
-                sessions={mySessions}
-                completedCount={completedCount}
-                totalCents={totalCents}
-                payout={payout}
-                monthKey={monthKey}
-                now={now}
-                showLocation={false}
-              />
-            ))}
-          </div>
-        ))
+        (() => {
+          const selectedId = searchParams.id ? Number(searchParams.id) : locationGroups[0].location.id;
+          const active = locationGroups.find((g) => g.location.id === selectedId) ?? locationGroups[0];
+          return (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {locationGroups.map((g) => (
+                  <Link
+                    key={g.location.id}
+                    href={buildUrl(searchParams, { view: "location", id: String(g.location.id) })}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      g.location.id === active.location.id
+                        ? "bg-magenta text-white"
+                        : "bg-blush/40 text-ink/60 hover:bg-blush"
+                    }`}
+                  >
+                    {g.location.name}{" "}
+                    <span className={g.location.id === active.location.id ? "text-white/80" : "text-ink/40"}>
+                      ({formatMoney(g.locationTotalCents)})
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <h3 className="font-display text-lg font-600">{active.location.name}</h3>
+                  <p className="text-sm text-ink/50">{formatMoney(active.locationTotalCents)}</p>
+                </div>
+                {active.entries.map(({ instructor, sessions: mySessions, completedCount, totalCents, payout }) => (
+                  <InstructorPayCard
+                    key={instructor.id}
+                    instructorId={instructor.id}
+                    name={instructor.name}
+                    sessions={mySessions}
+                    completedCount={completedCount}
+                    totalCents={totalCents}
+                    payout={payout}
+                    monthKey={monthKey}
+                    now={now}
+                    showLocation={false}
+                  />
+                ))}
+              </div>
+            </>
+          );
+        })()
       )}
     </div>
   );
