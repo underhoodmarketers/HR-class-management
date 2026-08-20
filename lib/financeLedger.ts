@@ -10,6 +10,7 @@ export type LedgerRow = {
   description: string;
   amountCents: number; // signed: positive for revenue, negative for expense
   expenseId?: number; // present only for deletable manual expense rows
+  revenueId?: number; // present only for deletable manual revenue rows
   customerId?: number; // present only for rows tied to a real customer account
 };
 
@@ -79,6 +80,7 @@ export async function getLocationLedgers() {
             r.customerName ? r.customerName + (r.comment ? ` (${r.comment})` : "") : r.comment || "Registration"
           ),
           amountCents: r.amountCents,
+          revenueId: r.id,
         });
       }
       for (const m of liveMemberships) {

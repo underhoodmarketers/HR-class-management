@@ -314,9 +314,9 @@ export const locationExpenses = pgTable("location_expenses", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Historical revenue imported from the old registration sheets, for months
-// before real purchases flowed through the app. Going forward, revenue is
-// computed live from memberships — nothing new should be written here.
+// Manually-entered revenue that doesn't flow through a Stripe/Zelle
+// membership purchase — historical registration-sheet backfill, plus
+// ongoing entries like cash payments or ClassPass/Wellhub payouts.
 export const locationRevenueHistory = pgTable("location_revenue_history", {
   id: serial("id").primaryKey(),
   locationId: integer("location_id")

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/guards";
-import { addLocationExpense, deleteLocationExpense } from "@/app/actions/admin";
+import { addLocationExpense, deleteLocationExpense, addLocationRevenue, deleteLocationRevenue } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import { formatDay, formatMoney } from "@/lib/utils";
 import { getLocationLedgers } from "@/lib/financeLedger";
@@ -8,7 +8,7 @@ import { getLocationLedgers } from "@/lib/financeLedger";
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  invalid: "Fill in a date, category, and an amount greater than $0.",
+  invalid: "Fill in a date, description, and an amount greater than $0.",
 };
 
 type SortField = "date" | "type" | "description" | "amount";
@@ -260,6 +260,13 @@ export default async function LocationFinancesPage({
                               confirmText={`Delete this expense (${formatMoney(-row.amountCents)})?`}
                               className="text-xs text-red-600 hover:underline"
                             />
+                          ) : row.revenueId ? (
+                            <ConfirmDeleteButton
+                              id={row.revenueId}
+                              action={deleteLocationRevenue}
+                              confirmText={`Delete this revenue entry (${formatMoney(row.amountCents)})?`}
+                              className="text-xs text-red-600 hover:underline"
+                            />
                           ) : null}
                         </td>
                       </tr>
@@ -291,6 +298,34 @@ export default async function LocationFinancesPage({
                 </table>
               </div>
 
+              <form action={addLocationRevenue} className="flex flex-wrap items-end gap-2 border-t border-ink/5 p-5">
+                <input type="hidden" name="locationId" value={active.location.id} />
+                <div>
+                  <label className="label">Date</label>
+                  <input type="date" name="date" required className="input py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="label">Description</label>
+                  <input
+                    name="customerName"
+                    placeholder="Cash payment, ClassPass…"
+                    required
+                    className="input py-1.5 text-sm"
+                  />
+                </div>
+                <div className="w-28">
+                  <label className="label">Amount</label>
+                  <input type="number" name="amount" step="0.01" min="0.01" required className="input py-1.5 text-sm" />
+                </div>
+                <div className="flex-1 min-w-[140px]">
+                  <label className="label">Note</label>
+                  <input name="comment" className="input py-1.5 text-sm" />
+                </div>
+                <button type="submit" className="btn-primary px-4 py-1.5 text-sm">
+                  Add revenue
+                </button>
+              </form>
+
               <form action={addLocationExpense} className="flex flex-wrap items-end gap-2 border-t border-ink/5 p-5">
                 <input type="hidden" name="locationId" value={active.location.id} />
                 <div>
@@ -309,7 +344,7 @@ export default async function LocationFinancesPage({
                   <label className="label">Note</label>
                   <input name="comment" className="input py-1.5 text-sm" />
                 </div>
-                <button type="submit" className="btn-primary px-4 py-1.5 text-sm">
+                <button type="submit" className="btn-subtle px-4 py-1.5 text-sm">
                   Add expense
                 </button>
               </form>

@@ -11,6 +11,7 @@ import {
   instructorLocations,
   instructorPayouts,
   locationExpenses,
+  locationRevenueHistory,
   locations,
   memberships,
   packages,
@@ -1322,6 +1323,45 @@ export async function deleteLocationExpense(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!id) return;
   await db.delete(locationExpenses).where(eq(locationExpenses.id, id));
+  revalidatePath("/admin/location-finances");
+  redirect(`/admin/location-finances?saved=1`);
+}
+
+// Manual revenue entries — cash payments, ClassPass/Wellhub payouts, or
+// anything else that doesn't flow through a Stripe/Zelle membership
+// purchase and so wouldn't otherwise show up in the ledger.
+export async function addLocationRevenue(formData: FormData) {
+  await requireAdmin();
+  const locationId = Number(formData.get("locationId"));
+  const date = String(formData.get("date") || "");
+  const customerName = String(formData.get("customerName") || "").trim();
+  const amountRaw = String(formData.get("amount") || "").trim();
+  const amount = Number(amountRaw);
+  const comment = String(formData.get("comment") || "").trim() || null;
+
+  const invalid =
+    !locationId || !date || isNaN(Date.parse(date)) || !customerName || !amountRaw || isNaN(amount) || amount <= 0;
+  if (invalid) {
+    redirect(`/admin/location-finances?error=invalid`);
+  }
+
+  await db.insert(locationRevenueHistory).values({
+    locationId,
+    date,
+    customerName,
+    amountCents: Math.round(amount * 100),
+    comment,
+  });
+
+  revalidatePath("/admin/location-finances");
+  redirect(`/admin/location-finances?saved=1`);
+}
+
+export async function deleteLocationRevenue(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  await db.delete(locationRevenueHistory).where(eq(locationRevenueHistory.id, id));
   revalidatePath("/admin/location-finances");
   redirect(`/admin/location-finances?saved=1`);
 }
