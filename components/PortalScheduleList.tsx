@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { bookClass } from "@/app/actions/booking";
+import { bookClass, cancelBooking } from "@/app/actions/booking";
 import { formatDay, formatTime } from "@/lib/utils";
 
 type SessionRow = {
@@ -14,6 +14,7 @@ type SessionRow = {
   bookedCount: number;
   capacity: number;
   isBooked: boolean;
+  bookingId: number | null;
 };
 
 export default function PortalScheduleList({
@@ -88,7 +89,22 @@ export default function PortalScheduleList({
                   </div>
                 </div>
                 {s.isBooked ? (
-                  <span className="badge bg-emerald-100 text-emerald-700">Booked</span>
+                  <div className="flex items-center gap-2">
+                    <span className="badge bg-emerald-100 text-emerald-700">Booked</span>
+                    {s.bookingId ? (
+                      <form
+                        action={cancelBooking}
+                        onSubmit={(e) => {
+                          if (!confirm(`Cancel your spot in ${s.classTypeName}?\n\nYour credit will be refunded.`)) {
+                            e.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="bookingId" value={s.bookingId} />
+                        <button className="text-xs text-red-600 hover:underline">Cancel</button>
+                      </form>
+                    ) : null}
+                  </div>
                 ) : full ? (
                   <span className="badge bg-ink/10 text-ink/50">Full</span>
                 ) : (

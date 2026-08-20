@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { and, gte, eq, inArray } from "drizzle-orm";
+import { and, gte, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, users } from "@/db/schema";
+import { classSessions, locations, users } from "@/db/schema";
 import { requireUser } from "@/lib/guards";
 import { getActiveMembership } from "@/lib/queries";
 import { DROP_IN_PACKAGE_NAME } from "@/lib/utils";
@@ -9,7 +9,11 @@ import PortalScheduleList from "@/components/PortalScheduleList";
 
 export const dynamic = "force-dynamic";
 
-export default async function SchedulePage() {
+export default async function SchedulePage({
+  searchParams,
+}: {
+  searchParams: { loc?: string };
+}) {
   const session = await requireUser();
   const [active, profile] = await Promise.all([
     getActiveMembership(session.userId),
@@ -37,12 +41,27 @@ export default async function SchedulePage() {
   // it starts — covers walk-ins and last-minute bookings during class.
   const cutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
-  const where =
+  // Studios this package can be used at — every active studio if
+  // unrestricted, otherwise just the allowed ones — for the location
+  // filter tabs. A tab is only worth showing if there's more than one.
+  const myLocations =
     allowedLocationIds.length > 0
+      ? await db.query.locations.findMany({ where: inArray(locations.id, allowedLocationIds) })
+      : await db.query.locations.findMany({ where: and(eq(locations.active, true), isNull(locations.archivedAt)) });
+  const sortedLocations = [...myLocations].sort((a, b) => a.name.localeCompare(b.name));
+
+  const selectedLocationId = searchParams.loc ? Number(searchParams.loc) : null;
+  const effectiveLocationIds =
+    selectedLocationId && sortedLocations.some((l) => l.id === selectedLocationId)
+      ? [selectedLocationId]
+      : allowedLocationIds;
+
+  const where =
+    effectiveLocationIds.length > 0
       ? and(
           gte(classSessions.endsAt, cutoff),
           eq(classSessions.canceled, false),
-          inArray(classSessions.locationId, allowedLocationIds)
+          inArray(classSessions.locationId, effectiveLocationIds)
         )
       : and(gte(classSessions.endsAt, cutoff), eq(classSessions.canceled, false));
 
@@ -92,9 +111,34 @@ export default async function SchedulePage() {
         </div>
       ) : null}
 
+      {sortedLocations.length > 1 ? (
+        <div className="flex flex-wrap gap-1.5 border-b border-ink/5 pb-3">
+          <Link
+            href="/portal/schedule"
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              !selectedLocationId ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
+            }`}
+          >
+            All studios
+          </Link>
+          {sortedLocations.map((l) => (
+            <Link
+              key={l.id}
+              href={`/portal/schedule?loc=${l.id}`}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                selectedLocationId === l.id ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
+              }`}
+            >
+              {l.name}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
       <PortalScheduleList
         sessions={sessions.map((s) => {
           const booked = s.bookings.filter((b) => b.status === "booked");
+          const myBooking = booked.find((b) => b.userId === session.userId) ?? null;
           return {
             id: s.id,
             classTypeName: s.classType.name,
@@ -104,7 +148,8 @@ export default async function SchedulePage() {
             instructor: s.instructor,
             bookedCount: booked.length,
             capacity: s.capacity,
-            isBooked: booked.some((b) => b.userId === session.userId),
+            isBooked: myBooking !== null,
+            bookingId: myBooking?.id ?? null,
           };
         })}
         hasRegularCredit={hasRegularCredit}
