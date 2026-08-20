@@ -168,7 +168,12 @@ export default async function SchedulePage({
         sessions={sessions.map((s) => {
           const booked = s.bookings.filter((b) => b.status === "booked");
           const myBooking = booked.find((b) => b.userId === session.userId) ?? null;
-          const bookable = Boolean(active) && s.startsAt >= (active?.membership.startsAt ?? now) && hasCredits;
+          // Bookable once the membership has actually started as of today —
+          // not just once we're browsing a class dated on/after its start
+          // date, since the real booking action won't allow it until then
+          // either. Once started, every class is bookable as normal (no
+          // further per-class date restriction).
+          const bookable = Boolean(active) && !notStartedYet && hasCredits;
           return {
             id: s.id,
             classTypeName: s.classType.name,
