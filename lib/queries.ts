@@ -4,13 +4,22 @@ import { db } from "@/db";
 import { memberships, packages, users, zellePayments, classSessions } from "@/db/schema";
 import { DROP_IN_PACKAGE_NAME, addStudioDays, studioWeekday, studioDateKey, fromStudioTime } from "./utils";
 
-export async function getActiveMembership(userId: number) {
+/**
+ * The membership actually usable for booking right now — status active,
+ * already started, not yet ended. `requireStarted: false` drops the
+ * "already started" check, for display contexts (like the schedule page)
+ * that need to show a queued future package too; the real booking actions
+ * always use the strict default so nothing can be booked against a
+ * membership before its start date arrives.
+ */
+export async function getActiveMembership(userId: number, options: { requireStarted?: boolean } = {}) {
+  const { requireStarted = true } = options;
   const now = new Date();
   const membership = await db.query.memberships.findFirst({
     where: and(
       eq(memberships.userId, userId),
       eq(memberships.status, "active"),
-      lte(memberships.startsAt, now),
+      requireStarted ? lte(memberships.startsAt, now) : undefined,
       gt(memberships.endsAt, now)
     ),
     with: { package: { with: { locations: true } } },

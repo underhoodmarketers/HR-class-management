@@ -15,6 +15,7 @@ type SessionRow = {
   capacity: number;
   isBooked: boolean;
   bookingId: number | null;
+  bookable: boolean;
 };
 
 export default function PortalScheduleList({
@@ -30,7 +31,6 @@ export default function PortalScheduleList({
 }) {
   const [creditSource, setCreditSource] = useState<"regular" | "makeup">("regular");
   const showChoice = hasRegularCredit && hasMakeupCredit;
-  const canBook = hasRegularCredit || hasMakeupCredit;
 
   return (
     <div className="space-y-4">
@@ -115,7 +115,7 @@ export default function PortalScheduleList({
                       name="creditSource"
                       value={showChoice ? creditSource : "auto"}
                     />
-                    <button className="btn-primary px-4 py-2 text-sm" disabled={!canBook}>
+                    <button className="btn-primary px-4 py-2 text-sm" disabled={!s.bookable}>
                       Book
                     </button>
                   </form>
