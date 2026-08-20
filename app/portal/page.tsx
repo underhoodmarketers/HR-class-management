@@ -29,6 +29,9 @@ export default async function PortalHome({
     getCurrentMonthLeaderboard(),
     getLastMonthChampion(),
   ]);
+  // Only worth checking for a queued future package when there's no
+  // currently-usable one — that's the only case where it'd change what's shown.
+  const future = active ? null : await getActiveMembership(session.userId, { requireStarted: false });
   const now = new Date();
 
   // Live from Stripe, not stored locally — always accurate, no sync to drift.
@@ -131,6 +134,12 @@ export default async function PortalHome({
         ) : (
           <>
             <p className="mt-1 font-display text-2xl font-600">No active package</p>
+            {future ? (
+              <p className="mt-1 text-sm text-white/70">
+                Your {future.membership.package.name} package starts {formatDay(future.membership.startsAt)} —
+                you can already book classes from that date onward.
+              </p>
+            ) : null}
             {profile && profile.makeupCredits > 0 ? (
               <p className="mt-1 text-sm text-white/70">
                 You still have {profile.makeupCredits} banked makeup credit
