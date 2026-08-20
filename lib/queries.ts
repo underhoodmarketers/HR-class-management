@@ -5,26 +5,42 @@ import { memberships, packages, users, zellePayments, classSessions } from "@/db
 import { DROP_IN_PACKAGE_NAME, addStudioDays, studioWeekday, studioDateKey, fromStudioTime } from "./utils";
 
 /**
- * The membership actually usable for booking right now — status active,
- * already started, not yet ended. `requireStarted: false` drops the
- * "already started" check, for display contexts (like the schedule page)
- * that need to show a queued future package too; the real booking actions
- * always use the strict default so nothing can be booked against a
- * membership before its start date arrives.
+ * The membership to book against: the currently-started one if there is
+ * one, otherwise (when `requireStarted: false`) the soonest queued future
+ * one. Callers that pass a future membership are expected to also check
+ * the specific class's date against `membership.startsAt` themselves,
+ * since a queued package only covers classes on/after its own start date.
+ * The strict default (`requireStarted: true`, i.e. only ever return an
+ * already-started membership) is what most callers want.
  */
 export async function getActiveMembership(userId: number, options: { requireStarted?: boolean } = {}) {
   const { requireStarted = true } = options;
   const now = new Date();
-  const membership = await db.query.memberships.findFirst({
+
+  const started = await db.query.memberships.findFirst({
     where: and(
       eq(memberships.userId, userId),
       eq(memberships.status, "active"),
-      requireStarted ? lte(memberships.startsAt, now) : undefined,
+      lte(memberships.startsAt, now),
       gt(memberships.endsAt, now)
     ),
     with: { package: { with: { locations: true } } },
     orderBy: [desc(memberships.endsAt)],
   });
+
+  let membership = started;
+  if (!membership && !requireStarted) {
+    membership = await db.query.memberships.findFirst({
+      where: and(
+        eq(memberships.userId, userId),
+        eq(memberships.status, "active"),
+        gt(memberships.startsAt, now),
+        gt(memberships.endsAt, now)
+      ),
+      with: { package: { with: { locations: true } } },
+      orderBy: [asc(memberships.startsAt)],
+    });
+  }
   if (!membership) return null;
 
   const allowedLocationIds = membership.package.locations.map((l) => l.locationId);

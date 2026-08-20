@@ -12,7 +12,7 @@ export async function bookClass(formData: FormData) {
   const session = await requireUser();
   const sessionId = Number(formData.get("sessionId"));
 
-  const active = await getActiveMembership(session.userId);
+  const active = await getActiveMembership(session.userId, { requireStarted: false });
   if (!active) return;
 
   const { membership, allowedLocationIds } = active;
@@ -22,6 +22,10 @@ export async function bookClass(formData: FormData) {
     with: { bookings: true },
   });
   if (!classSession || classSession.canceled) return;
+
+  // A queued package can be pre-booked ahead for classes on/after its own
+  // start date — just not for classes before it starts.
+  if (classSession.startsAt < membership.startsAt) return;
 
   // Location must be allowed by the package (empty list = all studios).
   if (allowedLocationIds.length && !allowedLocationIds.includes(classSession.locationId)) {
@@ -99,7 +103,11 @@ export async function bookClass(formData: FormData) {
       .where(eq(memberships.id, membership.id));
   }
 
-  if (isFirstBookingEver && !membership.startDateConfirmed) {
+  // Only collapse to "starts now" if the membership was already usable
+  // today — a queued future membership being pre-booked ahead (allowed
+  // above) must keep its computed future start date, not have it dragged
+  // back to today just because this happens to be its first booking.
+  if (isFirstBookingEver && !membership.startDateConfirmed && membership.startsAt <= new Date()) {
     const startsAt = new Date();
     // durationDays counts the start day itself as day 1.
     const endsAt = new Date(

@@ -91,7 +91,7 @@ export default async function SchedulePage({
         tone: "info" as const,
         text: `Your ${active.membership.package.name} package starts ${formatDay(
           active.membership.startsAt
-        )} — classes before then are shown but can't be booked yet.`,
+        )} — you can already book classes from that date onward; earlier ones are shown but can't be booked.`,
       }
     : !hasCredits
     ? {
@@ -168,12 +168,10 @@ export default async function SchedulePage({
         sessions={sessions.map((s) => {
           const booked = s.bookings.filter((b) => b.status === "booked");
           const myBooking = booked.find((b) => b.userId === session.userId) ?? null;
-          // Bookable once the membership has actually started as of today —
-          // not just once we're browsing a class dated on/after its start
-          // date, since the real booking action won't allow it until then
-          // either. Once started, every class is bookable as normal (no
-          // further per-class date restriction).
-          const bookable = Boolean(active) && !notStartedYet && hasCredits;
+          // A queued future package can be pre-booked ahead for classes
+          // on/after its own start date — matches what bookClass allows.
+          const bookable =
+            Boolean(active) && s.startsAt >= (active?.membership.startsAt ?? now) && hasCredits;
           return {
             id: s.id,
             classTypeName: s.classType.name,
