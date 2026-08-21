@@ -12,6 +12,7 @@ export type LedgerRow = {
   expenseId?: number; // present only for deletable manual expense rows
   revenueId?: number; // present only for deletable manual revenue rows
   customerId?: number; // present only for rows tied to a real customer account
+  category?: string; // present only on Expense rows — the manual category, or "Instructor" for live-computed pay
 };
 
 // Some imported sheet comments have embedded newlines — collapse to a
@@ -107,6 +108,7 @@ export async function getLocationLedgers() {
           description: clean(e.category + (e.comment ? ` — ${e.comment}` : "")),
           amountCents: -e.amountCents,
           expenseId: e.id,
+          category: e.category,
         });
       }
 
@@ -123,6 +125,7 @@ export async function getLocationLedgers() {
           type: "Expense",
           description: `Instructor pay — ${monthLabel(monthKey)} (${count} class${count === 1 ? "" : "es"})`,
           amountCents: -(count * INSTRUCTOR_RATE_CENTS),
+          category: "Instructor",
         });
       }
 

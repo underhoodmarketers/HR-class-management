@@ -56,16 +56,38 @@ export default async function LocationFinancesPage({
   const activeLocationId = searchParams.loc ? Number(searchParams.loc) : rows[0]?.location.id;
   const active = rows.find((r) => r.location.id === activeLocationId) ?? rows[0];
 
-  const typeFilter = searchParams.type === "revenue" || searchParams.type === "expense" ? searchParams.type : "all";
+  // "all" | "revenue" | "expense" (any category) | "expense:<Category>" (one
+  // specific category, e.g. "expense:Studio" or "expense:Instructor").
+  const typeFilter = searchParams.type ?? "all";
   const q = (searchParams.q ?? "").trim().toLowerCase();
   const sortField: SortField = (["date", "type", "description", "amount"].includes(searchParams.sort ?? "")
     ? searchParams.sort
     : "date") as SortField;
   const sortDir: "asc" | "desc" = searchParams.dir === "desc" ? "desc" : "asc";
 
+  // Only the categories actually present for this studio, so the buttons
+  // never offer a filter that would just show "nothing matches."
+  const expenseCategories = active
+    ? [...new Set(active.ledger.filter((r) => r.type === "Expense" && r.category).map((r) => r.category as string))].sort(
+        (a, b) => {
+          const priority = (c: string) => (c === "Studio" ? 0 : c === "Instructor" ? 1 : 2);
+          const diff = priority(a) - priority(b);
+          return diff !== 0 ? diff : a.localeCompare(b);
+        }
+      )
+    : [];
+
   const filteredLedger = active
     ? active.ledger
-        .filter((row) => typeFilter === "all" || row.type.toLowerCase() === typeFilter)
+        .filter((row) => {
+          if (typeFilter === "all") return true;
+          if (typeFilter === "revenue") return row.type === "Revenue";
+          if (typeFilter === "expense") return row.type === "Expense";
+          if (typeFilter.startsWith("expense:")) {
+            return row.type === "Expense" && row.category === typeFilter.slice("expense:".length);
+          }
+          return true;
+        })
         .filter((row) => !q || row.description.toLowerCase().includes(q))
         .sort((a, b) => {
           let cmp = 0;
@@ -185,7 +207,7 @@ export default async function LocationFinancesPage({
                   placeholder="Search description…"
                   className="input min-w-[200px] flex-1 py-1.5 text-sm"
                 />
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {(["all", "revenue", "expense"] as const).map((t) => (
                     <Link
                       key={t}
@@ -194,9 +216,23 @@ export default async function LocationFinancesPage({
                         typeFilter === t ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
                       }`}
                     >
-                      {t === "all" ? "All" : t === "revenue" ? "Revenue" : "Expense"}
+                      {t === "all" ? "All" : t === "revenue" ? "Revenue" : "All expense"}
                     </Link>
                   ))}
+                  {expenseCategories.map((cat) => {
+                    const value = `expense:${cat}`;
+                    return (
+                      <Link
+                        key={cat}
+                        href={buildUrl(baseParams, { type: value })}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                          typeFilter === value ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
+                        }`}
+                      >
+                        {cat} expense
+                      </Link>
+                    );
+                  })}
                 </div>
                 <button type="submit" className="btn-subtle px-4 py-1.5 text-sm">
                   Filter
@@ -231,6 +267,7 @@ export default async function LocationFinancesPage({
                           >
                             {row.type}
                           </span>
+                          {row.category ? <span className="ml-1.5 text-xs text-ink/40">{row.category}</span> : null}
                         </td>
                         <td className="px-5 py-2 text-ink/70">
                           {row.customerId ? (
