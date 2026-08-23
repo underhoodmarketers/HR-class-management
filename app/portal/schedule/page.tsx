@@ -184,6 +184,7 @@ export default async function SchedulePage({
             isBooked: myBooking !== null,
             bookingId: myBooking?.id ?? null,
             bookable,
+            cancelable: s.endsAt > now,
           };
         })}
         hasRegularCredit={hasRegularCredit}

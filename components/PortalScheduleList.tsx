@@ -16,6 +16,7 @@ type SessionRow = {
   isBooked: boolean;
   bookingId: number | null;
   bookable: boolean;
+  cancelable: boolean;
 };
 
 export default function PortalScheduleList({
@@ -91,7 +92,7 @@ export default function PortalScheduleList({
                 {s.isBooked ? (
                   <div className="flex items-center gap-2">
                     <span className="badge bg-emerald-100 text-emerald-700">Booked</span>
-                    {s.bookingId ? (
+                    {s.bookingId && s.cancelable ? (
                       <form
                         action={cancelBooking}
                         onSubmit={(e) => {

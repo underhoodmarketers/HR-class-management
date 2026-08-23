@@ -127,8 +127,12 @@ export async function cancelBooking(formData: FormData) {
 
   const booking = await db.query.bookings.findFirst({
     where: and(eq(bookings.id, bookingId), eq(bookings.userId, session.userId)),
+    with: { session: true },
   });
   if (!booking || booking.status !== "booked") return;
+  // Once the class has actually happened, it's an attendance record, not a
+  // booking to back out of — no more canceling (and no credit refund) after it ends.
+  if (booking.session.endsAt <= new Date()) return;
 
   await db.update(bookings).set({ status: "canceled" }).where(eq(bookings.id, bookingId));
 
