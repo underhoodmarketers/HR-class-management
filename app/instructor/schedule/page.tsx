@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { and, desc, eq, gte, gt, lt } from "drizzle-orm";
+import { and, desc, eq, gte, gt, lt, or, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, instructorLocations, memberships, users } from "@/db/schema";
+import { classSessions, classSessionInstructors, instructorLocations, memberships, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import {
   formatDay,
@@ -29,11 +29,18 @@ export default async function InstructorSchedulePage({
 }) {
   const session = await requireInstructor();
 
-  const myLocations = await db.query.instructorLocations.findMany({
-    where: eq(instructorLocations.userId, session.userId),
-    with: { location: true },
-  });
+  const [myLocations, myCoSessions] = await Promise.all([
+    db.query.instructorLocations.findMany({
+      where: eq(instructorLocations.userId, session.userId),
+      with: { location: true },
+    }),
+    db.query.classSessionInstructors.findMany({
+      where: eq(classSessionInstructors.instructorId, session.userId),
+      columns: { sessionId: true },
+    }),
+  ]);
   const myLocationIds = myLocations.map((l) => l.locationId);
+  const myCoSessionIds = myCoSessions.map((r) => r.sessionId);
 
   const now = new Date();
   const todayKey = studioDateKey(now);
@@ -51,9 +58,13 @@ export default async function InstructorSchedulePage({
   const dayStart = fromStudioTime(`${selectedDayKey}T00:00`);
   const dayEnd = addStudioDays(dayStart, 1);
 
-  // Only classes assigned specifically to this instructor are visible to
-  // them — no matter which studio it's at.
-  const visibleToMe = eq(classSessions.assignedInstructorId, session.userId);
+  // Classes assigned specifically to this instructor are visible to them —
+  // no matter which studio it's at — plus any they've been added to as a
+  // secondary/covering instructor.
+  const visibleToMe =
+    myCoSessionIds.length > 0
+      ? or(eq(classSessions.assignedInstructorId, session.userId), inArray(classSessions.id, myCoSessionIds))!
+      : eq(classSessions.assignedInstructorId, session.userId);
 
   const [upNext, gridSessions, agendaSessions, customers, activeMembershipRows, hasAssignedClass] =
     await Promise.all([
@@ -93,7 +104,7 @@ export default async function InstructorSchedulePage({
       }),
     ]);
 
-  const canSeeSchedule = Boolean(hasAssignedClass);
+  const canSeeSchedule = myCoSessionIds.length > 0 || Boolean(hasAssignedClass);
 
   const myLocationIdSet = new Set(myLocationIds);
   const myCustomers = customers.filter((c) => c.locations.some((l) => myLocationIdSet.has(l.locationId)));

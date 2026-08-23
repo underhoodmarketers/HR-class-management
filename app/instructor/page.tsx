@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, or, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, instructorLocations, users } from "@/db/schema";
+import { classSessions, classSessionInstructors, instructorLocations, users } from "@/db/schema";
 import { requireInstructor } from "@/lib/guards";
 import { formatDay, formatTime, formatBirthday, daysUntilBirthday } from "@/lib/utils";
 import InstructorBulkEmailForm from "@/components/InstructorBulkEmailForm";
@@ -33,17 +33,28 @@ export default async function InstructorDashboardPage({
         }
       : null;
 
-  const myLocations = await db.query.instructorLocations.findMany({
-    where: eq(instructorLocations.userId, session.userId),
-    with: { location: true },
-  });
+  const [myLocations, myCoSessions] = await Promise.all([
+    db.query.instructorLocations.findMany({
+      where: eq(instructorLocations.userId, session.userId),
+      with: { location: true },
+    }),
+    db.query.classSessionInstructors.findMany({
+      where: eq(classSessionInstructors.instructorId, session.userId),
+      columns: { sessionId: true },
+    }),
+  ]);
   const myLocationIds = myLocations.map((l) => l.locationId);
   const myLocationIdSet = new Set(myLocationIds);
   const myLocationNames = myLocations.map((l) => l.location.name).join(", ");
 
-  // Only classes assigned specifically to this instructor are visible to
-  // them — no matter which studio it's at.
-  const visibleToMe = eq(classSessions.assignedInstructorId, session.userId);
+  // Classes assigned specifically to this instructor are visible to them —
+  // no matter which studio it's at — plus any they've been added to as a
+  // secondary/covering instructor.
+  const myCoSessionIds = myCoSessions.map((r) => r.sessionId);
+  const visibleToMe =
+    myCoSessionIds.length > 0
+      ? or(eq(classSessions.assignedInstructorId, session.userId), inArray(classSessions.id, myCoSessionIds))!
+      : eq(classSessions.assignedInstructorId, session.userId);
 
   const [customers, upcomingSessions, hasAssignedClass] = await Promise.all([
     db.query.users.findMany({
@@ -62,7 +73,7 @@ export default async function InstructorDashboardPage({
     }),
   ]);
 
-  const canSeeSchedule = Boolean(hasAssignedClass);
+  const canSeeSchedule = myCoSessionIds.length > 0 || Boolean(hasAssignedClass);
   const upNext = upcomingSessions[0] ?? null;
 
   // A customer is "yours" if any of their preferred studios is one you're assigned to.

@@ -31,6 +31,8 @@ export default function SessionRow({
   locations,
   instructors,
   assignedInstructorName,
+  coInstructorIds,
+  coInstructorNames,
   booked,
   dayLabel,
   timeLabel,
@@ -43,6 +45,8 @@ export default function SessionRow({
   locations: { id: number; name: string }[];
   instructors: InstructorOption[];
   assignedInstructorName: string | null;
+  coInstructorIds: number[];
+  coInstructorNames: string[];
   booked: number;
   dayLabel: string;
   timeLabel: string;
@@ -136,6 +140,22 @@ export default function SessionRow({
             </select>
           </div>
 
+          <div>
+            <label className="label">Also visible to (optional)</label>
+            <select name="coInstructorIds" multiple className="input h-auto" defaultValue={coInstructorIds.map(String)}>
+              {instructors.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                  {i.studioNames ? ` (${i.studioNames})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-ink/40">
+              Cmd/Ctrl-click to select more than one — a covering or shadowing instructor who should also
+              see this class, without changing who&apos;s paid for it.
+            </p>
+          </div>
+
           {editing === "series" ? (
             <p className="text-xs text-ink/50">
               Each class keeps its own date; only the time of day and details
@@ -192,6 +212,7 @@ export default function SessionRow({
             {locationName} · {dayLabel} {timeLabel} · {booked}/
             {session.capacity}
             {assignedInstructorName ? ` · Assigned: ${assignedInstructorName}` : ""}
+            {coInstructorNames.length > 0 ? ` · Also: ${coInstructorNames.join(", ")}` : ""}
           </p>
         </div>
       </Link>

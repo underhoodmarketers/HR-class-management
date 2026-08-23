@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
   bookings,
   classSessions,
+  classSessionInstructors,
   classTypes,
   instructorLocations,
   instructorPayouts,
@@ -155,6 +156,23 @@ async function resolveInstructor(formData: FormData) {
     : { assignedInstructorId: null, instructor: null };
 }
 
+/**
+ * Extra instructors (beyond the one primary assignedInstructorId) who
+ * should also see this class in their portal — e.g. a covering or
+ * shadowing instructor. Excludes the primary so it's never duplicated
+ * across both mechanisms.
+ */
+function resolveCoInstructorIds(formData: FormData, primaryId: number | null): number[] {
+  return [
+    ...new Set(
+      formData
+        .getAll("coInstructorIds")
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n > 0 && n !== primaryId)
+    ),
+  ];
+}
+
 // ---------- Class sessions ----------
 export async function createSession(formData: FormData) {
   await requireAdmin();
@@ -165,6 +183,7 @@ export async function createSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const { instructor, assignedInstructorId } = await resolveInstructor(formData);
+  const coInstructorIds = resolveCoInstructorIds(formData, assignedInstructorId);
 
   // Optional: repeat weekly through this date. Blank = just the picked date(s), once.
   const endDateValue = String(formData.get("endDate") || "");
@@ -228,7 +247,14 @@ export async function createSession(formData: FormData) {
   }
 
   rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-  await db.insert(classSessions).values(rows);
+  const inserted = await db.insert(classSessions).values(rows).returning({ id: classSessions.id });
+
+  if (coInstructorIds.length > 0) {
+    await db.insert(classSessionInstructors).values(
+      inserted.flatMap((s) => coInstructorIds.map((instructorId) => ({ sessionId: s.id, instructorId })))
+    );
+  }
+
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
   redirect(`/admin/calendar?created=${rows.length}`);
@@ -243,6 +269,7 @@ export async function editSession(formData: FormData) {
   const durationMin = Number(formData.get("durationMin") || 60);
   const capacity = Number(formData.get("capacity") || 20);
   const { instructor, assignedInstructorId } = await resolveInstructor(formData);
+  const coInstructorIds = resolveCoInstructorIds(formData, assignedInstructorId);
   const locationId = Number(formData.get("locationId"));
 
   const existing = await db.query.classSessions.findFirst({
@@ -250,6 +277,15 @@ export async function editSession(formData: FormData) {
   });
   if (!existing || Number.isNaN(start.getTime())) {
     redirect("/admin/calendar?error=invalid");
+  }
+
+  async function replaceCoInstructors(sessionIds: number[]) {
+    await db.delete(classSessionInstructors).where(inArray(classSessionInstructors.sessionId, sessionIds));
+    if (coInstructorIds.length > 0) {
+      await db
+        .insert(classSessionInstructors)
+        .values(sessionIds.flatMap((sessionId) => coInstructorIds.map((instructorId) => ({ sessionId, instructorId }))));
+    }
   }
 
   if (scope === "series" && existing.seriesId) {
@@ -280,11 +316,13 @@ export async function editSession(formData: FormData) {
         })
         .where(eq(classSessions.id, sib.id));
     }
+    await replaceCoInstructors(siblings.map((sib) => sib.id));
     revalidatePath("/admin/calendar");
     revalidatePath("/admin");
     redirect(`/admin/calendar?updated=${siblings.length}`);
   }
 
+  await replaceCoInstructors([id]);
   await db
     .update(classSessions)
     .set({

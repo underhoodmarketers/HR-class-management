@@ -74,6 +74,7 @@ export default async function CalendarPage({
         classType: true,
         location: true,
         bookings: true,
+        coInstructors: { with: { instructor: { columns: { name: true } } } },
       },
       orderBy: [classSessions.startsAt],
     }),
@@ -255,6 +256,23 @@ export default async function CalendarPage({
                   </p>
                 ) : null}
               </div>
+              {instructorOptions.length > 0 ? (
+                <div>
+                  <label className="label">Also visible to (optional)</label>
+                  <select name="coInstructorIds" multiple className="input h-auto">
+                    {instructorOptions.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                        {i.studioNames ? ` (${i.studioNames})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-ink/40">
+                    Cmd/Ctrl-click to select more than one — a covering or shadowing instructor who
+                    should also see this class, without changing who&apos;s paid for it.
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <label className="label">Repeat weekly until (optional)</label>
                 <input type="date" name="endDate" className="input" />
@@ -438,6 +456,8 @@ export default async function CalendarPage({
                             ? instructorNameById.get(s.assignedInstructorId) ?? null
                             : null
                         }
+                        coInstructorIds={s.coInstructors.map((c) => c.instructorId)}
+                        coInstructorNames={s.coInstructors.map((c) => c.instructor.name)}
                         booked={activeBookings.length}
                         dayLabel={formatDay(s.startsAt)}
                         timeLabel={formatTime(s.startsAt)}

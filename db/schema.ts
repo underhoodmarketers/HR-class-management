@@ -82,6 +82,23 @@ export const classSessions = pgTable(
   (t) => ({ startsIdx: index("sessions_starts_idx").on(t.startsAt) })
 );
 
+// Extra instructors who can also see a class in their portal, on top of the
+// one primary assignedInstructorId — e.g. a covering or shadowing
+// instructor. Doesn't affect instructor pay, which is still attributed to
+// the primary instructor only.
+export const classSessionInstructors = pgTable(
+  "class_session_instructors",
+  {
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => classSessions.id, { onDelete: "cascade" }),
+    instructorId: integer("instructor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.sessionId, t.instructorId] }) })
+);
+
 // ---------- Packages / membership plans ----------
 export const packages = pgTable("packages", {
   id: serial("id").primaryKey(),
@@ -523,6 +540,18 @@ export const classSessionsRelations = relations(classSessions, ({ one, many }) =
     references: [users.id],
   }),
   bookings: many(bookings),
+  coInstructors: many(classSessionInstructors),
+}));
+
+export const classSessionInstructorsRelations = relations(classSessionInstructors, ({ one }) => ({
+  session: one(classSessions, {
+    fields: [classSessionInstructors.sessionId],
+    references: [classSessions.id],
+  }),
+  instructor: one(users, {
+    fields: [classSessionInstructors.instructorId],
+    references: [users.id],
+  }),
 }));
 
 export const packagesRelations = relations(packages, ({ many }) => ({
