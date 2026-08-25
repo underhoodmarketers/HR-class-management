@@ -2,7 +2,7 @@
 
 import crypto from "crypto";
 import { redirect } from "next/navigation";
-import { eq, desc, and, gt, isNull } from "drizzle-orm";
+import { eq, desc, and, gt, gte, isNull, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -14,6 +14,7 @@ import {
   dropInInvites,
   memberships,
   packages,
+  signupAttempts,
 } from "@/db/schema";
 import {
   hashPassword,
@@ -22,6 +23,7 @@ import {
   createSession,
   destroySession,
   getSession,
+  getClientIp,
 } from "@/lib/auth";
 import { sendPasswordResetEmail } from "@/lib/email";
 
@@ -56,7 +58,28 @@ function safeNext(next: string | undefined) {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
 }
 
+const SIGNUP_RATE_LIMIT = 3;
+const SIGNUP_RATE_WINDOW_MS = 15 * 60 * 1000;
+
 export async function signupAction(_prev: unknown, formData: FormData) {
+  // Honeypot — real users never see or fill this field (see SignupForm),
+  // so a non-empty value means a bot filled out every input on the page.
+  // Reject with a generic message so it doesn't reveal what tripped it.
+  if (String(formData.get("website") || "").trim() !== "") {
+    return { error: "Something went wrong. Please try again." };
+  }
+
+  const ip = getClientIp();
+  const since = new Date(Date.now() - SIGNUP_RATE_WINDOW_MS);
+  const [{ recentAttempts }] = await db
+    .select({ recentAttempts: count() })
+    .from(signupAttempts)
+    .where(and(eq(signupAttempts.ip, ip), gte(signupAttempts.createdAt, since)));
+  if (recentAttempts >= SIGNUP_RATE_LIMIT) {
+    return { error: "Too many signup attempts from this network. Please try again in a few minutes." };
+  }
+  await db.insert(signupAttempts).values({ ip });
+
   // Multi-value checkbox fields don't survive Object.fromEntries (it keeps
   // only the last value per key), so pull locationIds out separately.
   const locationIds = formData

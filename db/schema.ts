@@ -264,6 +264,16 @@ export const zellePayments = pgTable("zelle_payments", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 });
 
+// ---------- Signup rate limiting ----------
+// One row per signup attempt (successful or blocked), keyed by IP — lets
+// signupAction cap how many accounts one IP can create in a short window,
+// without needing an external rate-limit service.
+export const signupAttempts = pgTable("signup_attempts", {
+  id: serial("id").primaryKey(),
+  ip: varchar("ip", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Password reset tokens (forgot-password email flow) ----------
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),

@@ -20,6 +20,13 @@ export function SignupForm({
   return (
     <form action={action} className="space-y-4">
       {next ? <input type="hidden" name="next" value={next} /> : null}
+      {/* Honeypot — invisible to real users, but a bot filling out every
+          input on the page will fill this in too, so a non-empty value
+          means "reject" (checked in signupAction). */}
+      <div className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden" aria-hidden="true">
+        <label htmlFor="website">Leave this field blank</label>
+        <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="label" htmlFor="name">Full name</label>

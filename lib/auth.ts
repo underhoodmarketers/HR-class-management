@@ -1,10 +1,19 @@
 import "server-only";
 import crypto from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import { signToken, verifyToken, SESSION_COOKIE, type SessionPayload } from "./jwt";
 
 export type { SessionPayload };
+
+/** Best-effort client IP from Vercel's forwarding headers — for rate
+ * limiting only, not a security boundary (a determined bot can spoof it). */
+export function getClientIp(): string {
+  const h = headers();
+  const forwardedFor = h.get("x-forwarded-for");
+  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  return h.get("x-real-ip") ?? "unknown";
+}
 
 export async function hashPassword(plain: string) {
   return bcrypt.hash(plain, 10);
