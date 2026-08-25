@@ -63,7 +63,8 @@ export default async function LocationFinancesPage({
   const sortField: SortField = (["date", "type", "description", "amount"].includes(searchParams.sort ?? "")
     ? searchParams.sort
     : "date") as SortField;
-  const sortDir: "asc" | "desc" = searchParams.dir === "desc" ? "desc" : "asc";
+  // Defaults to latest-first; only explicit ?dir=asc switches it.
+  const sortDir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
 
   // Only the categories actually present for this studio, so the buttons
   // never offer a filter that would just show "nothing matches."
@@ -170,7 +171,7 @@ export default async function LocationFinancesPage({
             {rows.map((r) => (
               <Link
                 key={r.location.id}
-                href={buildUrl(baseParams, { loc: String(r.location.id), sort: "date", dir: "asc", type: "all", q: "" })}
+                href={buildUrl(baseParams, { loc: String(r.location.id), sort: "date", dir: "desc", type: "all", q: "" })}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                   r.location.id === active?.location.id
                     ? "bg-magenta text-white"
