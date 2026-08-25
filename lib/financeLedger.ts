@@ -51,7 +51,7 @@ export async function getLocationLedgers() {
     }),
     db.query.zellePayments.findMany({
       where: eq(zellePayments.status, "approved"),
-      columns: { membershipId: true },
+      columns: { membershipId: true, amountCents: true },
     }),
   ]);
 
@@ -64,6 +64,16 @@ export async function getLocationLedgers() {
   // counting the backfilled membership here too would double it.
   const zelleApprovedMembershipIds = new Set(
     approvedZellePayments.map((z) => z.membershipId).filter((id): id is number => id !== null)
+  );
+  // A Zelle payment can differ from the package's list price (a discount, a
+  // partial/negotiated amount, etc.), and unlike Stripe that exact amount is
+  // stored locally — use it instead of assuming list price. Stripe purchases
+  // still fall back to list price, since a promo-discounted Stripe charge
+  // isn't stored locally (see getAmountPaidCents).
+  const zelleAmountByMembershipId = new Map(
+    approvedZellePayments
+      .filter((z): z is typeof z & { membershipId: number } => z.membershipId !== null)
+      .map((z) => [z.membershipId, z.amountCents])
   );
   const liveMemberships = candidateMemberships.filter(
     (m) => m.stripeSessionId !== null || zelleApprovedMembershipIds.has(m.id)
@@ -89,7 +99,8 @@ export async function getLocationLedgers() {
         const idx = locIds.indexOf(location.id);
         if (idx === -1) continue; // this customer's studios don't include this one
 
-        const shares = splitEvenly(m.package.priceCents, locIds.length);
+        const paidCents = m.billingType === "zelle" ? zelleAmountByMembershipId.get(m.id) ?? m.package.priceCents : m.package.priceCents;
+        const shares = splitEvenly(paidCents, locIds.length);
         ledger.push({
           date: m.createdAt,
           type: "Revenue",
