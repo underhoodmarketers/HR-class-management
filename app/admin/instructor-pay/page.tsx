@@ -335,7 +335,7 @@ function InstructorPayCard({
         <input
           name="comments"
           defaultValue={payout?.comments ?? ""}
-          placeholder="Comments (e.g. $5 due)"
+          placeholder="Comments (optional)"
           className="input flex-1 min-w-[160px] py-1.5 text-sm"
         />
         <button type="submit" name="status" value="due" className="btn-subtle px-3 py-1.5 text-xs">
