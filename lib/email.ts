@@ -2,6 +2,7 @@ import "server-only";
 import { Resend } from "resend";
 
 const FROM_EMAIL = "Holistic Rhythm <team@myholisticrhythm.com>";
+const TEAM_EMAIL = "team@myholisticrhythm.com";
 
 // Instantiated lazily so the app can boot without Resend configured yet.
 const resend = new Resend(process.env.RESEND_API_KEY || "re_placeholder");
@@ -149,6 +150,7 @@ export async function sendMembershipReminderEmail(
   await resend.emails.send({
     from: FROM_EMAIL,
     to,
+    bcc: TEAM_EMAIL,
     subject: `Your ${packageName} package expires in 7 days`,
     html: `
       <p>Hi ${name},</p>
@@ -171,6 +173,7 @@ export async function sendMembershipExpiredEmail(
   await resend.emails.send({
     from: FROM_EMAIL,
     to,
+    bcc: TEAM_EMAIL,
     subject: `Your ${packageName} package has expired`,
     html: `
       <p>Hi ${name},</p>
