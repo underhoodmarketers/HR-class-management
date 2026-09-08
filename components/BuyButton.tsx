@@ -36,9 +36,10 @@ export default function BuyButton({
   const [promoStatus, setPromoStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [checkingPromo, setCheckingPromo] = useState(false);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
-  const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null }>({
+  const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null; complete: boolean }>({
     slots: [],
     startDate: null,
+    complete: false,
   });
 
   const fetchClientSecret = useCallback(async () => {
@@ -117,9 +118,17 @@ export default function BuyButton({
             ) : stage === "schedule" ? (
               <div className="space-y-4 p-2">
                 <SchedulePicker packageId={packageId} onChange={setSchedule} />
-                <button type="button" onClick={() => setStage("promo")} className="btn-primary w-full">
+                <button
+                  type="button"
+                  onClick={() => setStage("promo")}
+                  disabled={!schedule.complete}
+                  className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   Continue
                 </button>
+                {!schedule.complete ? (
+                  <p className="text-center text-xs text-ink/40">Pick your class day(s) above to continue.</p>
+                ) : null}
               </div>
             ) : stage === "promo" ? (
               <div className="space-y-4 p-2">

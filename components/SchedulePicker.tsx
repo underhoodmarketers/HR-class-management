@@ -77,7 +77,7 @@ export default function SchedulePicker({
   onChange,
 }: {
   packageId: number;
-  onChange: (value: { slots: Slot[]; startDate: string | null }) => void;
+  onChange: (value: { slots: Slot[]; startDate: string | null; complete: boolean }) => void;
 }) {
   const [pace, setPace] = useState<number | null>(null);
   const [locationOptions, setLocationOptions] = useState<LocationOption[] | null>(null);
@@ -160,7 +160,7 @@ export default function SchedulePicker({
   }, [JSON.stringify(allSlots), slotsComplete]);
 
   useEffect(() => {
-    onChange({ slots: slotsComplete ? allSlots : [], startDate: selectedDate });
+    onChange({ slots: slotsComplete ? allSlots : [], startDate: selectedDate, complete: slotsComplete });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(allSlots), slotsComplete, selectedDate]);
 

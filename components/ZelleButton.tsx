@@ -27,9 +27,10 @@ export default function ZelleButton({
   const [open, setOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [stage, setStage] = useState<"schedule" | "location" | "form">(isDropIn ? "location" : "schedule");
-  const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null }>({
+  const [schedule, setSchedule] = useState<{ slots: Slot[]; startDate: string | null; complete: boolean }>({
     slots: [],
     startDate: null,
+    complete: false,
   });
 
   if (!recipient) return null;
@@ -65,9 +66,17 @@ export default function ZelleButton({
             {stage === "schedule" ? (
               <div className="space-y-4">
                 <SchedulePicker packageId={packageId} onChange={setSchedule} />
-                <button type="button" onClick={() => setStage("form")} className="btn-primary w-full">
+                <button
+                  type="button"
+                  onClick={() => setStage("form")}
+                  disabled={!schedule.complete}
+                  className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   Continue
                 </button>
+                {!schedule.complete ? (
+                  <p className="text-center text-xs text-ink/40">Pick your class day(s) above to continue.</p>
+                ) : null}
               </div>
             ) : stage === "location" ? (
               <div className="space-y-4">
