@@ -97,6 +97,18 @@ function usageSummary(membership: Membership) {
   return { totalWeeks, weeksUsed, weeksLeft, creditsUsed };
 }
 
+/** The stored status only changes when an admin edits it or the expiry cron
+ * runs (which happens once, on the day a membership expires) — so a
+ * membership can sit at stored status "active" past its end date until then.
+ * Derive what's actually shown from the dates so the badge is never stale. */
+function displayStatus(membership: Membership): string {
+  if (membership.frozenAt) return "frozen";
+  if (membership.status === "active" && new Date().getTime() >= membership.endsAt.getTime()) {
+    return "expired";
+  }
+  return membership.status;
+}
+
 function OwedBanner({ creditsOwed }: { creditsOwed: number }) {
   if (creditsOwed <= 0) return null;
   return (
@@ -202,6 +214,13 @@ export default function MembershipCard({
 
   const usage = usageSummary(membership);
   const isFrozen = Boolean(membership.frozenAt);
+  const status = displayStatus(membership);
+  const statusBadgeClass =
+    status === "frozen"
+      ? "bg-sky-100 text-sky-700"
+      : status === "expired"
+      ? "bg-ink/10 text-ink/50"
+      : "bg-blush text-magenta-deep";
 
   return (
     <div className="card p-6">
@@ -258,8 +277,8 @@ export default function MembershipCard({
         <div>
           <dt className="text-ink/40">Status</dt>
           <dd>
-            <span className={`badge ${isFrozen ? "bg-sky-100 text-sky-700" : "bg-blush text-magenta-deep"}`}>
-              {membership.status}
+            <span className={`badge ${statusBadgeClass}`}>
+              {status}
             </span>
             {isFrozen ? (
               <span className="ml-2 text-xs text-ink/40">since {formatDay(membership.frozenAt!)}</span>

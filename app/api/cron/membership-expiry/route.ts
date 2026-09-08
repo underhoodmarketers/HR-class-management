@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
     });
     await db
       .update(memberships)
-      .set({ expiredEmailSentAt: new Date() })
+      .set({ status: "expired", expiredEmailSentAt: new Date() })
       .where(eq(memberships.id, m.id));
     expiredSent++;
   }
