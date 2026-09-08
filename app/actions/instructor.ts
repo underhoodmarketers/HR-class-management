@@ -12,10 +12,11 @@ import { DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 
 /**
  * Books a customer into a class from the instructor portal — e.g. a walk-in
- * during class. Only allowed for classes assigned specifically to this
- * instructor. Otherwise mirrors adminBookClass: doesn't require the
- * customer's package to cover this studio, and a customer with no package
- * or no remaining credits can't be booked at all.
+ * during class. Allowed for classes assigned specifically to this instructor,
+ * or classes they've been added to as a secondary/covering instructor (same
+ * scoping as their schedule view). Otherwise mirrors adminBookClass: doesn't
+ * require the customer's package to cover this studio, and a customer with
+ * no package or no remaining credits can't be booked at all.
  */
 export async function instructorBookClass(formData: FormData) {
   const session = await requireInstructor();
@@ -25,10 +26,12 @@ export async function instructorBookClass(formData: FormData) {
 
   const classSession = await db.query.classSessions.findFirst({
     where: eq(classSessions.id, sessionId),
-    with: { bookings: true },
+    with: { bookings: true, coInstructors: true },
   });
   if (!classSession || classSession.canceled) return;
-  if (classSession.assignedInstructorId !== session.userId) return;
+  const isPrimary = classSession.assignedInstructorId === session.userId;
+  const isCoInstructor = classSession.coInstructors.some((c) => c.instructorId === session.userId);
+  if (!isPrimary && !isCoInstructor) return;
 
   const alreadyBooked = classSession.bookings.some(
     (b) => b.userId === userId && b.status === "booked"
@@ -92,7 +95,8 @@ export async function instructorBookClass(formData: FormData) {
  * Cancels a single customer's booking (not the whole class) from the
  * instructor portal and refunds their credit to wherever it was drawn
  * from — mirrors adminCancelBooking, scoped to classes assigned
- * specifically to this instructor.
+ * specifically to this instructor, or classes they're a secondary/covering
+ * instructor on (same scoping as instructorBookClass).
  */
 export async function instructorCancelBooking(formData: FormData) {
   const session = await requireInstructor();
@@ -101,10 +105,12 @@ export async function instructorCancelBooking(formData: FormData) {
 
   const booking = await db.query.bookings.findFirst({
     where: eq(bookings.id, bookingId),
-    with: { session: true },
+    with: { session: { with: { coInstructors: true } } },
   });
   if (!booking || booking.status !== "booked") return;
-  if (booking.session.assignedInstructorId !== session.userId) return;
+  const isPrimary = booking.session.assignedInstructorId === session.userId;
+  const isCoInstructor = booking.session.coInstructors.some((c) => c.instructorId === session.userId);
+  if (!isPrimary && !isCoInstructor) return;
 
   await db.update(bookings).set({ status: "canceled" }).where(eq(bookings.id, bookingId));
 
