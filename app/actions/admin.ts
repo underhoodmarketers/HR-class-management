@@ -1271,6 +1271,8 @@ export async function approveZellePayment(formData: FormData) {
       startsAt,
       endsAt,
       startDateConfirmed: Boolean(requestedStartsAt) || requestedSlots.length > 0,
+      requestedSlots: request.requestedSlots,
+      requestedStartDate: request.requestedStartDate,
       billingType: "zelle",
     })
     .returning();

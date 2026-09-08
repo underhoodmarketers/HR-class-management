@@ -177,6 +177,13 @@ export const memberships = pgTable("memberships", {
   // flow to leave them alone instead of shifting to whatever day the first
   // class actually gets booked.
   startDateConfirmed: boolean("start_date_confirmed").notNull().default(false),
+  // What the customer actually picked at checkout — JSON array of
+  // {locationId, weekday} slots, and/or an explicit start date — kept
+  // around for admins to see even after it's been folded into
+  // startsAt/endsAt above. Null when nothing was picked (e.g. an
+  // admin-created membership, or "soonest available" with no slots yet).
+  requestedSlots: text("requested_slots"),
+  requestedStartDate: date("requested_start_date"),
   // When the current freeze started (admin-only pause) — null if not frozen.
   // On resume, the frozen span is added back onto endsAt so the customer
   // doesn't lose paid-for time, then this is cleared.

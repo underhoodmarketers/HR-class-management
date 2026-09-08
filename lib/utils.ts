@@ -141,6 +141,18 @@ export function studioWeekday(d: Date): number {
   return new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
 }
 
+export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Renders the weekly slots a customer picked at checkout, e.g. "Mon @ Frisco, Wed @ Frisco". */
+export function formatAttendanceSlots(
+  slots: { locationId: number; weekday: number }[],
+  locationNames: Record<number, string>
+): string {
+  return slots
+    .map((s) => `${WEEKDAY_LABELS[s.weekday] ?? "?"} @ ${locationNames[s.locationId] ?? "studio"}`)
+    .join(", ");
+}
+
 /** "yyyy-mm-dd" calendar date of an instant, in studio time. */
 export function studioDateKey(d: Date): string {
   const p = studioParts(d);

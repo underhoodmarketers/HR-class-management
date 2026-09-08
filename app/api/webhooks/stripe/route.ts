@@ -162,6 +162,8 @@ export async function POST(req: NextRequest) {
                 startsAt,
                 endsAt,
                 startDateConfirmed: Boolean(requestedStartDate) || slots.length > 0,
+                requestedSlots: slots.length > 0 ? JSON.stringify(slots) : null,
+                requestedStartDate: checkout.metadata?.startDate || null,
                 stripeSessionId: checkout.id,
                 stripeSubscriptionId:
                   typeof checkout.subscription === "string" ? checkout.subscription : null,

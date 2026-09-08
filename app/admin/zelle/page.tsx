@@ -1,8 +1,17 @@
 import { desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { zellePayments } from "@/db/schema";
+import { locations, zellePayments } from "@/db/schema";
 import { updateZelleSettings, approveZellePayment, rejectZellePayment } from "@/app/actions/admin";
-import { formatDay, formatMoney } from "@/lib/utils";
+import { formatDay, formatMoney, formatAttendanceSlots, fromStudioTime } from "@/lib/utils";
+
+function parseRequestedSlots(raw: string | null): { locationId: number; weekday: number }[] {
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +24,7 @@ export default async function ZellePage({
 }: {
   searchParams: { saved?: string; error?: string };
 }) {
-  const [settings, pending, history] = await Promise.all([
+  const [settings, pending, history, allLocations] = await Promise.all([
     db.query.zelleSettings.findFirst(),
     db.query.zellePayments.findMany({
       where: eq(zellePayments.status, "pending"),
@@ -28,7 +37,9 @@ export default async function ZellePage({
       orderBy: [desc(zellePayments.reviewedAt)],
       limit: 20,
     }),
+    db.select().from(locations),
   ]);
+  const locationNames = Object.fromEntries(allLocations.map((l) => [l.id, l.name]));
 
   const banner =
     searchParams.error && errorMessages[searchParams.error]
@@ -103,13 +114,24 @@ export default async function ZellePage({
               <div className="card p-6 text-sm text-ink/40">Nothing to review.</div>
             ) : (
               <ul className="space-y-3">
-                {pending.map((z) => (
+                {pending.map((z) => {
+                  const slots = parseRequestedSlots(z.requestedSlots);
+                  const hasSchedule = slots.length > 0 || Boolean(z.requestedStartDate);
+                  return (
                   <li key={z.id} className="card flex items-center justify-between p-5">
                     <div>
                       <p className="font-600">{z.user.name}</p>
                       <p className="text-sm text-ink/60">
                         {z.package.name} · {formatMoney(z.amountCents)}
                       </p>
+                      {hasSchedule ? (
+                        <p className="mt-1 text-xs text-ink/50">
+                          {slots.length > 0 ? formatAttendanceSlots(slots, locationNames) : "No day picked"}
+                          {z.requestedStartDate
+                            ? ` · starting ${formatDay(fromStudioTime(`${z.requestedStartDate}T00:00`))}`
+                            : " · soonest available"}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-ink/40">
                         {z.confirmationNumber
                           ? `Confirmation: ${z.confirmationNumber}`
@@ -130,7 +152,8 @@ export default async function ZellePage({
                       </form>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
