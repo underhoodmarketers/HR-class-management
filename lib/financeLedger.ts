@@ -1,8 +1,8 @@
 import "server-only";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { classSessions, locationExpenses, locationRevenueHistory, locations, memberships, zellePayments } from "@/db/schema";
-import { fromStudioTime, studioDateKey, monthLabel, INSTRUCTOR_RATE_CENTS } from "./utils";
+import { bookings, classSessions, locationExpenses, locationRevenueHistory, locations, memberships, zellePayments } from "@/db/schema";
+import { fromStudioTime, studioDateKey, monthLabel, INSTRUCTOR_RATE_CENTS, DROP_IN_PACKAGE_NAME } from "./utils";
 
 export type LedgerRow = {
   date: Date;
@@ -79,6 +79,29 @@ export async function getLocationLedgers() {
     (m) => m.stripeSessionId !== null || zelleApprovedMembershipIds.has(m.id)
   );
 
+  // A Drop-In is one specific class, not an ongoing multi-studio membership —
+  // its revenue belongs entirely to whichever studio the customer actually
+  // booked, not split across every studio they happen to have as a
+  // preference. Falls back to the usual split if it hasn't been booked yet
+  // (we don't know the studio until then).
+  const dropInMembershipIds = liveMemberships
+    .filter((m) => m.package.name === DROP_IN_PACKAGE_NAME)
+    .map((m) => m.id);
+  const dropInBookings =
+    dropInMembershipIds.length > 0
+      ? await db.query.bookings.findMany({
+          where: and(inArray(bookings.membershipId, dropInMembershipIds), eq(bookings.status, "booked")),
+          with: { session: { columns: { locationId: true } } },
+          orderBy: [bookings.createdAt],
+        })
+      : [];
+  const dropInLocationByMembershipId = new Map<number, number>();
+  for (const b of dropInBookings) {
+    if (b.membershipId !== null && !dropInLocationByMembershipId.has(b.membershipId)) {
+      dropInLocationByMembershipId.set(b.membershipId, b.session.locationId);
+    }
+  }
+
   const rows = allLocations
     .map((location) => {
       const ledger: LedgerRow[] = [];
@@ -95,11 +118,26 @@ export async function getLocationLedgers() {
         });
       }
       for (const m of liveMemberships) {
+        const paidCents = m.billingType === "zelle" ? zelleAmountByMembershipId.get(m.id) ?? m.package.priceCents : m.package.priceCents;
+
+        const bookedLocationId =
+          m.package.name === DROP_IN_PACKAGE_NAME ? dropInLocationByMembershipId.get(m.id) : undefined;
+        if (bookedLocationId !== undefined) {
+          if (bookedLocationId !== location.id) continue; // this Drop-In's class was booked at a different studio
+          ledger.push({
+            date: m.createdAt,
+            type: "Revenue",
+            description: `${m.user.name} — ${m.package.name}`,
+            amountCents: paidCents,
+            customerId: m.userId,
+          });
+          continue;
+        }
+
         const locIds = [...new Set(m.user.locations.map((l) => l.locationId))].sort((a, b) => a - b);
         const idx = locIds.indexOf(location.id);
         if (idx === -1) continue; // this customer's studios don't include this one
 
-        const paidCents = m.billingType === "zelle" ? zelleAmountByMembershipId.get(m.id) ?? m.package.priceCents : m.package.priceCents;
         const shares = splitEvenly(paidCents, locIds.length);
         ledger.push({
           date: m.createdAt,
