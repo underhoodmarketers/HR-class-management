@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { memberships } from "@/db/schema";
+import { memberships, users } from "@/db/schema";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { getActiveMembership } from "@/lib/queries";
 import { sendMembershipReminderEmail, sendMembershipExpiredEmail } from "@/lib/email";
-import { fromStudioTime, addStudioDays, studioDateKey, formatDay } from "@/lib/utils";
+import { fromStudioTime, addStudioDays, studioDateKey, formatDay, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,9 +100,27 @@ export async function GET(req: NextRequest) {
       packageName: m.package.name,
       portalUrl,
     });
+
+    // Credits left unused on an expiring package become banked makeup
+    // credits — mirrors rolloverUnusedCredits, which only fires at the next
+    // purchase and explicitly skips whichever membership is still current at
+    // that moment, so a package that ran out on its own (like this one) would
+    // otherwise never get swept.
+    const hasLeftoverCredits =
+      m.package.name !== DROP_IN_PACKAGE_NAME && m.creditsRemaining !== null && m.creditsRemaining > 0;
+    if (hasLeftoverCredits) {
+      await db
+        .update(users)
+        .set({ makeupCredits: sql`${users.makeupCredits} + ${m.creditsRemaining}` })
+        .where(eq(users.id, m.userId));
+    }
     await db
       .update(memberships)
-      .set({ status: "expired", expiredEmailSentAt: new Date() })
+      .set({
+        status: "expired",
+        expiredEmailSentAt: new Date(),
+        ...(hasLeftoverCredits ? { creditsRemaining: 0 } : {}),
+      })
       .where(eq(memberships.id, m.id));
     expiredSent++;
   }
