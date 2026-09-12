@@ -74,34 +74,13 @@ function DateField({
   );
 }
 
-/** Credits/weeks used vs. left. A freeze stops the weeks clock but never
- * credits, since a frozen membership can't be booked against. */
 function usageSummary(membership: Membership) {
-  const now = new Date();
-  const totalDays = Math.round((membership.endsAt.getTime() - membership.startsAt.getTime()) / 86400000);
-  const totalWeeks = Math.max(1, Math.round(totalDays / 7));
-
-  let elapsedDays: number;
-  if (membership.frozenAt) {
-    elapsedDays = Math.round((membership.frozenAt.getTime() - membership.startsAt.getTime()) / 86400000);
-  } else if (now.getTime() >= membership.endsAt.getTime()) {
-    elapsedDays = totalDays;
-  } else if (now.getTime() <= membership.startsAt.getTime()) {
-    elapsedDays = 0;
-  } else {
-    elapsedDays = Math.round((now.getTime() - membership.startsAt.getTime()) / 86400000);
-  }
-  elapsedDays = Math.min(Math.max(elapsedDays, 0), totalDays);
-
-  const weeksUsed = Math.min(totalWeeks, Math.round(elapsedDays / 7));
-  const weeksLeft = Math.max(0, totalWeeks - weeksUsed);
-
   const creditsUsed =
     membership.packageCredits !== null && membership.creditsRemaining !== null
       ? membership.packageCredits - membership.creditsRemaining
       : null;
 
-  return { totalWeeks, weeksUsed, weeksLeft, creditsUsed };
+  return { creditsUsed };
 }
 
 /** The stored status only changes when an admin edits it or the expiry cron
@@ -305,12 +284,6 @@ export default function MembershipCard({
                 {membership.packageCredits !== null ? ` (of ${membership.packageCredits})` : ""}
               </>
             )}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-ink/40">Weeks</dt>
-          <dd>
-            {usage.weeksUsed} used · {usage.weeksLeft} left (of {usage.totalWeeks})
           </dd>
         </div>
         <div>
