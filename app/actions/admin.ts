@@ -963,10 +963,23 @@ export async function updateMembership(formData: FormData) {
 
   // "Frozen" isn't a choice on this form — it's only set via the dedicated
   // Freeze button — so any manual save here means the membership shouldn't
-  // be left in a stuck frozen state.
+  // be left in a stuck frozen state. Also clears whatever schedule/start
+  // date the customer originally requested at checkout — once an admin
+  // manually sets the dates here, that original request is stale and would
+  // otherwise keep showing next to the (now different) dates the admin set.
   await db
     .update(memberships)
-    .set({ packageId, status, creditsRemaining, startsAt, endsAt, billingType, frozenAt: null })
+    .set({
+      packageId,
+      status,
+      creditsRemaining,
+      startsAt,
+      endsAt,
+      billingType,
+      frozenAt: null,
+      requestedSlots: null,
+      requestedStartDate: null,
+    })
     .where(and(eq(memberships.id, id), eq(memberships.userId, customerId)));
 
   revalidatePath(`/admin/customers/${customerId}`);
