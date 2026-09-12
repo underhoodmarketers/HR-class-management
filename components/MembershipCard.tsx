@@ -14,6 +14,7 @@ import {
   parseFlexibleDate,
   addDaysToDateKey,
   daysBetweenDateKeys,
+  displayMembershipStatus,
 } from "@/lib/utils";
 import { SubmitButton } from "./SubmitButton";
 
@@ -81,18 +82,6 @@ function usageSummary(membership: Membership) {
       : null;
 
   return { creditsUsed };
-}
-
-/** The stored status only changes when an admin edits it or the expiry cron
- * runs (which happens once, on the day a membership expires) — so a
- * membership can sit at stored status "active" past its end date until then.
- * Derive what's actually shown from the dates so the badge is never stale. */
-function displayStatus(membership: Membership): string {
-  if (membership.frozenAt) return "frozen";
-  if (membership.status === "active" && new Date().getTime() >= membership.endsAt.getTime()) {
-    return "expired";
-  }
-  return membership.status;
 }
 
 function OwedBanner({ creditsOwed }: { creditsOwed: number }) {
@@ -200,7 +189,7 @@ export default function MembershipCard({
 
   const usage = usageSummary(membership);
   const isFrozen = Boolean(membership.frozenAt);
-  const status = displayStatus(membership);
+  const status = displayMembershipStatus(membership.status, membership.endsAt, membership.frozenAt);
   const statusBadgeClass =
     status === "frozen"
       ? "bg-sky-100 text-sky-700"

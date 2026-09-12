@@ -172,6 +172,20 @@ export function daysUntil(d: Date): number {
   );
 }
 
+/** The stored status only changes when an admin edits it or the expiry cron
+ * runs — so a membership can sit at stored status "active" past its end
+ * date until then. Derive what's actually true from the dates instead of
+ * trusting the stored column verbatim. */
+export function displayMembershipStatus(
+  status: string,
+  endsAt: Date,
+  frozenAt: Date | null
+): string {
+  if (frozenAt) return "frozen";
+  if (status === "active" && new Date().getTime() >= endsAt.getTime()) return "expired";
+  return status;
+}
+
 export function formatDay(d: Date) {
   return d.toLocaleDateString("en-US", {
     timeZone: STUDIO_TZ,

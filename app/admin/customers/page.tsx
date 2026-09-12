@@ -3,7 +3,7 @@ import { deleteCustomer, sendAdminCustomerEmail } from "@/app/actions/admin";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import CustomersFilterBar from "@/components/CustomersFilterBar";
 import EmailCustomerButton from "@/components/EmailCustomerButton";
-import { formatDay } from "@/lib/utils";
+import { formatDay, displayMembershipStatus } from "@/lib/utils";
 import { getFilteredCustomers, type SortField } from "@/lib/customerDirectory";
 
 const errorMessages: Record<string, string> = {
@@ -161,7 +161,9 @@ export default async function CustomersPage({
                     <>
                       <span className="badge bg-magenta/10 text-magenta-deep">{c.current.package.name}</span>
                       {!c.isActive ? (
-                        <span className="ml-1.5 text-xs text-ink/40">({c.current.status})</span>
+                        <span className="ml-1.5 text-xs text-ink/40">
+                          ({displayMembershipStatus(c.current.status, c.current.endsAt, c.current.frozenAt)})
+                        </span>
                       ) : null}
                     </>
                   ) : (
