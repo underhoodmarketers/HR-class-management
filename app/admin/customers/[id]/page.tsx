@@ -88,12 +88,20 @@ export default async function CustomerDetail({
 
   // Prefer whichever membership is actually in use right now (matches the
   // booking flow's own resolution) — a newer purchase may just be queued to
-  // start once that one ends, so it's not really "current" yet. Falls back
-  // to the most recent purchase for a fully expired customer.
+  // start once that one ends, so it's not really "current" yet. If more than
+  // one is queued (e.g. two packages bought back-to-back in the same
+  // sitting), show whichever starts soonest, not whichever was purchased
+  // last — the purchase order has no bearing on which one is "up next".
+  // Only falls back to the most recent purchase for a fully lapsed customer
+  // with nothing truly current or queued.
+  const notStartedYet = customer.memberships
+    .filter((m) => m.status === "active" && m.startsAt > now)
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   const currentMembership =
     customer.memberships.find(
       (m) => m.status === "active" && m.startsAt <= now && m.endsAt > now
     ) ??
+    notStartedYet[0] ??
     customer.memberships[0] ??
     null;
   const attendedInPackage = currentMembership
