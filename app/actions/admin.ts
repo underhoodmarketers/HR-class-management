@@ -882,6 +882,7 @@ export async function updateCustomer(formData: FormData) {
   const phone = String(formData.get("phone") || "").trim();
   const dob = String(formData.get("dob") || "");
   const instagram = String(formData.get("instagram") || "").trim().replace(/^@/, "") || null;
+  const preferredDays = String(formData.get("preferredDays") || "").trim() || null;
   const locationIds = formData
     .getAll("locationIds")
     .map((v) => Number(v))
@@ -906,7 +907,7 @@ export async function updateCustomer(formData: FormData) {
 
   await db
     .update(users)
-    .set({ name, email, phone, dob, instagram })
+    .set({ name, email, phone, dob, instagram, preferredDays })
     .where(and(eq(users.id, id), eq(users.role, "customer")));
   await db.delete(userLocations).where(eq(userLocations.userId, id));
   await db

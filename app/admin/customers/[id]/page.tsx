@@ -198,6 +198,7 @@ export default async function CustomerDetail({
             phone: customer.phone,
             dob: customer.dob,
             instagram: customer.instagram,
+            preferredDays: customer.preferredDays,
             locationIds: customer.locations.map((l) => l.locationId),
           }}
           studios={studios}
@@ -241,12 +242,9 @@ export default async function CustomerDetail({
                   endsAt: currentMembership.endsAt,
                   frozenAt: currentMembership.frozenAt,
                   billingType: currentMembership.billingType,
-                  requestedSlots: currentMembership.requestedSlots,
-                  requestedStartDate: currentMembership.requestedStartDate,
                 }
               : null
           }
-          locationNames={Object.fromEntries(studios.map((s) => [s.id, s.name]))}
           packages={allPackages.map((p) => ({
             id: p.id,
             name: p.name,

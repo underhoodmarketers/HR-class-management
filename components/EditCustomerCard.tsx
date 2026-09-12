@@ -11,6 +11,7 @@ type Customer = {
   phone: string | null;
   dob: string | null;
   instagram: string | null;
+  preferredDays: string | null;
   locationIds: number[];
 };
 
@@ -81,6 +82,17 @@ export default function EditCustomerCard({
             </div>
           </div>
           <div>
+            <label className="label">
+              Preferred day(s) <span className="font-400 text-ink/40">(optional)</span>
+            </label>
+            <input
+              name="preferredDays"
+              defaultValue={customer.preferredDays ?? ""}
+              placeholder="e.g. Thu & Sat"
+              className="input"
+            />
+          </div>
+          <div>
             <label className="label">Instagram</label>
             <input
               name="instagram"
@@ -112,6 +124,7 @@ export default function EditCustomerCard({
         <div><dt className="text-ink/40">Phone</dt><dd>{customer.phone || "—"}</dd></div>
         <div><dt className="text-ink/40">Date of birth</dt><dd>{formatDob(customer.dob)}</dd></div>
         <div><dt className="text-ink/40">Preferred studio(s)</dt><dd>{studioNames || "—"}</dd></div>
+        <div><dt className="text-ink/40">Preferred day(s)</dt><dd>{customer.preferredDays || "—"}</dd></div>
         <div>
           <dt className="text-ink/40">Instagram</dt>
           <dd>

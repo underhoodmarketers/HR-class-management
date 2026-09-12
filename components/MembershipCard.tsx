@@ -14,8 +14,6 @@ import {
   parseFlexibleDate,
   addDaysToDateKey,
   daysBetweenDateKeys,
-  formatAttendanceSlots,
-  fromStudioTime,
 } from "@/lib/utils";
 import { SubmitButton } from "./SubmitButton";
 
@@ -30,8 +28,6 @@ type Membership = {
   endsAt: Date;
   frozenAt: Date | null;
   billingType: string;
-  requestedSlots: string | null;
-  requestedStartDate: string | null;
 };
 
 type PackageOption = {
@@ -108,15 +104,6 @@ function usageSummary(membership: Membership) {
   return { totalWeeks, weeksUsed, weeksLeft, creditsUsed };
 }
 
-function parseRequestedSlots(raw: string | null): { locationId: number; weekday: number }[] {
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
 /** The stored status only changes when an admin edits it or the expiry cron
  * runs (which happens once, on the day a membership expires) — so a
  * membership can sit at stored status "active" past its end date until then.
@@ -158,7 +145,6 @@ export default function MembershipCard({
   totalAttended,
   creditsOwed,
   makeupCredits,
-  locationNames,
 }: {
   customerId: number;
   membership: Membership | null;
@@ -167,7 +153,6 @@ export default function MembershipCard({
   totalAttended: number;
   creditsOwed: number;
   makeupCredits: number;
-  locationNames: Record<number, string>;
 }) {
   const [mode, setMode] = useState<null | "edit" | "create">(null);
   const todayKey = studioDateKey(new Date());
@@ -237,8 +222,6 @@ export default function MembershipCard({
   const usage = usageSummary(membership);
   const isFrozen = Boolean(membership.frozenAt);
   const status = displayStatus(membership);
-  const requestedSlots = parseRequestedSlots(membership.requestedSlots);
-  const hasRequestedSchedule = requestedSlots.length > 0 || Boolean(membership.requestedStartDate);
   const statusBadgeClass =
     status === "frozen"
       ? "bg-sky-100 text-sky-700"
@@ -311,17 +294,6 @@ export default function MembershipCard({
         </div>
         <div><dt className="text-ink/40">First day</dt><dd>{formatDay(membership.startsAt)}</dd></div>
         <div><dt className="text-ink/40">Last day</dt><dd>{formatDay(membership.endsAt)}</dd></div>
-        {hasRequestedSchedule ? (
-          <div>
-            <dt className="text-ink/40">Requested at checkout</dt>
-            <dd>
-              {requestedSlots.length > 0 ? formatAttendanceSlots(requestedSlots, locationNames) : "No day picked"}
-              {membership.requestedStartDate
-                ? ` · starting ${formatDay(fromStudioTime(`${membership.requestedStartDate}T00:00`))}`
-                : " · soonest available"}
-            </dd>
-          </div>
-        ) : null}
         <div>
           <dt className="text-ink/40">Credits</dt>
           <dd>

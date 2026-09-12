@@ -24,6 +24,10 @@ export const users = pgTable("users", {
   // Required for customers (waiver/age checks); not applicable to staff.
   dob: date("dob"),
   instagram: varchar("instagram", { length: 60 }),
+  // Free-text note on which day(s)/times this customer generally prefers —
+  // admin-entered and editable, not tied to any one purchase, so it doesn't
+  // go stale the way a checkout-time snapshot would once dates get edited.
+  preferredDays: varchar("preferred_days", { length: 200 }),
   notes: text("notes"),
   // Banked "makeup class" credits — leftover credits swept in from a prior
   // package when a new one is bought. Never expire; drawn on only once a
