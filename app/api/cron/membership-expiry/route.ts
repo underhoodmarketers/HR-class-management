@@ -43,7 +43,6 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
-  const today = dayRange(studioDateKey(now));
   const reminderDay = dayRange(studioDateKey(addStudioDays(now, 7)));
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
@@ -81,11 +80,16 @@ export async function GET(req: NextRequest) {
     remindersSent++;
   }
 
+  // endsAt is a specific instant (typically 23:59 studio time on the
+  // customer's last valid day) — gate on it having actually passed, not just
+  // "falls on today's calendar date". The cron runs once a day (13:00 UTC /
+  // 8am studio time); comparing against a calendar-date range instead of the
+  // real instant would flip a membership to expired hours before its owner's
+  // last paid day was even over, locking them out of booking early.
   const expiredCandidates = await db.query.memberships.findMany({
     where: and(
       eq(memberships.status, "active"),
-      gte(memberships.endsAt, today.start),
-      lt(memberships.endsAt, today.end),
+      lt(memberships.endsAt, now),
       isNull(memberships.expiredEmailSentAt)
     ),
     with: { user: true, package: true },
