@@ -1079,6 +1079,8 @@ export async function issueTrialCreditCode(formData: FormData) {
   const amountOffCents = await getAmountPaidCents(membership);
 
   const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  let couponId: string;
+  let promotionCodeId: string;
   try {
     const coupon = await stripe.coupons.create({
       amount_off: amountOffCents,
@@ -1086,15 +1088,28 @@ export async function issueTrialCreditCode(formData: FormData) {
       duration: "once",
       name: `Trial credit (membership #${membership.id})`,
     });
-    await stripe.promotionCodes.create({
+    couponId = coupon.id;
+    const promotionCode = await stripe.promotionCodes.create({
       coupon: coupon.id,
       code,
       active: true,
       max_redemptions: 1,
     });
+    promotionCodeId = promotionCode.id;
   } catch {
     redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
   }
+
+  // Stripe knows this code exists, but checkout validates codes against our
+  // own promoCodes table first (see resolvePromoCode) — without this row the
+  // code would always come back "not valid" regardless of Stripe. Scoped to
+  // just this customer, one use, since it's compensation for their specific
+  // trial class.
+  const [promoCode] = await db
+    .insert(promoCodes)
+    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId, maxUsesPerCustomer: 1 })
+    .returning();
+  await db.insert(promoCodeCustomers).values({ promoCodeId: promoCode.id, userId: customerId });
 
   await db
     .update(memberships)
