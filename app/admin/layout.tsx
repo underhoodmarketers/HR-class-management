@@ -17,6 +17,7 @@ const nav = [
   { href: "/admin/locations", label: "Studios & classes" },
   { href: "/admin/waiver", label: "Waiver" },
   { href: "/admin/location-finances", label: "Finances", newTab: true },
+  { href: "/admin/logs", label: "Logs" },
   { href: "/admin/profile", label: "Profile" },
 ];
 

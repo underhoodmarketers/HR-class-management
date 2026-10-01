@@ -6,6 +6,7 @@ import { stripe, stripeConfigured } from "@/lib/stripe";
 import { getActiveMembership } from "@/lib/queries";
 import { sendMembershipReminderEmail, sendMembershipExpiredEmail } from "@/lib/email";
 import { fromStudioTime, addStudioDays, studioDateKey, formatDay, DROP_IN_PACKAGE_NAME } from "@/lib/utils";
+import { logError } from "@/lib/logging";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,15 @@ async function isStillAutoRenewing(membership: {
   try {
     const subscription = await stripe.subscriptions.retrieve(membership.stripeSubscriptionId);
     return subscription.status === "active" && !subscription.cancel_at && !subscription.cancel_at_period_end;
-  } catch {
+  } catch (err) {
+    // Treated as "not renewing" on failure, which lets expiry proceed — log
+    // it since a transient Stripe API error here would wrongly expire a
+    // membership that's actually still auto-renewing fine.
+    await logError({
+      source: "is_still_auto_renewing",
+      message: err instanceof Error ? err.message : String(err),
+      context: { stripeSubscriptionId: membership.stripeSubscriptionId },
+    });
     return false;
   }
 }

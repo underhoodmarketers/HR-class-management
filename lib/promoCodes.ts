@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { promoCodes, promoCodeRedemptions } from "@/db/schema";
 import { stripe } from "./stripe";
 import { formatMoney } from "./utils";
+import { logError } from "./logging";
 
 /**
  * Validates a promo code against restrictions Stripe has no concept of
@@ -57,7 +58,12 @@ export async function resolvePromoCode(
   let promotionCode;
   try {
     promotionCode = await stripe.promotionCodes.retrieve(promo.stripePromotionCodeId);
-  } catch {
+  } catch (err) {
+    await logError({
+      source: "resolve_promo_code",
+      message: err instanceof Error ? err.message : String(err),
+      context: { code, promoCodeId: promo.id, stripePromotionCodeId: promo.stripePromotionCodeId },
+    });
     return { ok: false, error: "That code isn't valid." };
   }
   if (!promotionCode.active) return { ok: false, error: "That code has expired or is no longer active." };

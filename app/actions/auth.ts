@@ -26,6 +26,7 @@ import {
   getClientIp,
 } from "@/lib/auth";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { logError } from "@/lib/logging";
 
 const signupSchema = z.object({
   name: z.string().min(2, "Enter your full name."),
@@ -398,6 +399,11 @@ export async function requestPasswordResetAction(
       await sendPasswordResetEmail(user.email, resetUrl);
     } catch (err) {
       console.error("Failed to send password reset email:", err);
+      await logError({
+        source: "password_reset_email",
+        message: err instanceof Error ? err.message : String(err),
+        context: { userId: user.id },
+      });
     }
   }
 

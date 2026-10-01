@@ -464,6 +464,36 @@ export const promoCodeLocations = pgTable(
   (t) => ({ pk: primaryKey({ columns: [t.promoCodeId, t.locationId] }) })
 );
 
+// ---------- Logging (audit trail + error visibility) ----------
+// One row per admin action that changes real state — who did what, to what,
+// and when. Kept separate from errorLogs so the two can be reviewed
+// independently (one's "what happened", the other's "what went wrong").
+// actorId goes null (not cascade-deleted) if the admin's account is later
+// removed, so the historical record survives — actorName is denormalized
+// for the same reason.
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorName: varchar("actor_name", { length: 160 }).notNull(),
+  action: varchar("action", { length: 80 }).notNull(), // e.g. "update_membership"
+  targetType: varchar("target_type", { length: 40 }), // e.g. "membership", "customer"
+  targetId: integer("target_id"),
+  details: text("details"), // freeform JSON-stringified context
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per caught-but-otherwise-silent failure (a Stripe call that threw
+// inside a try/catch, a webhook step that failed) — the exact class of bug
+// that let a broken trial-credit code go unnoticed. Rotated out after 3
+// months by the log-rotation cron, same as auditLogs.
+export const errorLogs = pgTable("error_logs", {
+  id: serial("id").primaryKey(),
+  source: varchar("source", { length: 80 }).notNull(), // e.g. "issue_trial_credit"
+  message: text("message").notNull(),
+  context: text("context"), // freeform JSON-stringified context
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Relations ----------
 export const usersRelations = relations(users, ({ one, many }) => ({
   memberships: many(memberships),

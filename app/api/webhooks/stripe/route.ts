@@ -8,6 +8,7 @@ import { stripe } from "@/lib/stripe";
 import { rolloverUnusedCredits, applyOwedCredits, computeMembershipWindow, type AttendanceSlot } from "@/lib/queries";
 import { sendPackagePurchaseEmail, sendDropInInviteEmail } from "@/lib/email";
 import { fromStudioTime } from "@/lib/utils";
+import { logError } from "@/lib/logging";
 
 function parseSlots(raw: string | undefined): AttendanceSlot[] {
   if (!raw) return [];
@@ -71,6 +72,11 @@ async function inviteDropInFriends(
       });
     } catch (err) {
       console.error(`Failed to send Drop-In invite email to ${friend.email}:`, err);
+      await logError({
+        source: "drop_in_invite_email",
+        message: err instanceof Error ? err.message : String(err),
+        context: { inviterUserId, friendEmail: friend.email },
+      });
     }
   }
 }
@@ -91,8 +97,10 @@ export async function POST(req: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, secret);
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await logError({ source: "stripe_webhook_signature", message });
     return NextResponse.json(
-      { error: `Webhook signature verification failed: ${(err as Error).message}` },
+      { error: `Webhook signature verification failed: ${message}` },
       { status: 400 }
     );
   }

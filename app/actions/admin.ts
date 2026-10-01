@@ -50,6 +50,7 @@ import {
 import { randomUUID } from "crypto";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { sendPackagePurchaseEmail, sendBulkEmail, sendSingleEmail } from "@/lib/email";
+import { logAudit, logError } from "@/lib/logging";
 
 /**
  * Returns credits to members holding active bookings on the given sessions,
@@ -175,7 +176,7 @@ function resolveCoInstructorIds(formData: FormData, primaryId: number | null): n
 
 // ---------- Class sessions ----------
 export async function createSession(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const classTypeId = Number(formData.get("classTypeId"));
   const locationId = Number(formData.get("locationId"));
   const startValue = String(formData.get("startsAt") || "");
@@ -255,13 +256,21 @@ export async function createSession(formData: FormData) {
     );
   }
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "create_session",
+    targetType: "class_session",
+    details: { classTypeId, locationId, count: rows.length, isSeries },
+  });
+
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
   redirect(`/admin/calendar?created=${rows.length}`);
 }
 
 export async function editSession(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const scope = String(formData.get("scope") || "one"); // "one" | "series"
   const startValue = String(formData.get("startsAt") || "");
@@ -317,6 +326,14 @@ export async function editSession(formData: FormData) {
         .where(eq(classSessions.id, sib.id));
     }
     await replaceCoInstructors(siblings.map((sib) => sib.id));
+    await logAudit({
+      actorId: admin.userId,
+      actorName: admin.name,
+      action: "edit_session",
+      targetType: "class_session",
+      targetId: id,
+      details: { scope: "series", count: siblings.length },
+    });
     revalidatePath("/admin/calendar");
     revalidatePath("/admin");
     redirect(`/admin/calendar?updated=${siblings.length}`);
@@ -337,13 +354,22 @@ export async function editSession(formData: FormData) {
     })
     .where(eq(classSessions.id, id));
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "edit_session",
+    targetType: "class_session",
+    targetId: id,
+    details: { scope: "one" },
+  });
+
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
   redirect("/admin/calendar?updated=1");
 }
 
 export async function deleteSeries(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const existing = await db.query.classSessions.findFirst({
     where: eq(classSessions.id, id),
@@ -366,6 +392,15 @@ export async function deleteSeries(formData: FormData) {
   const ids = targets.map((t) => t.id);
   const refunded = await refundBookingsForSessions(ids);
   await db.delete(classSessions).where(inArray(classSessions.id, ids));
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "delete_series",
+    targetType: "class_session",
+    targetId: id,
+    details: { deletedCount: ids.length, refunded },
+  });
 
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
@@ -507,22 +542,24 @@ export async function adminCancelBooking(formData: FormData) {
 }
 
 export async function cancelSession(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   // Members lose their spot, so give the credits back.
   await refundBookingsForSessions([id]);
   await db.update(classSessions).set({ canceled: true }).where(eq(classSessions.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "cancel_session", targetType: "class_session", targetId: id });
   revalidatePath("/admin/calendar");
   revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
 }
 
 export async function deleteSession(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   // Refund before deleting — the delete cascades bookings away.
   await refundBookingsForSessions([id]);
   await db.delete(classSessions).where(eq(classSessions.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "delete_session", targetType: "class_session", targetId: id });
   revalidatePath("/admin/calendar");
   revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
@@ -530,26 +567,28 @@ export async function deleteSession(formData: FormData) {
 
 // ---------- Locations ----------
 export async function createLocation(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const address = String(formData.get("address") || "") || null;
   if (!name) return;
-  await db.insert(locations).values({ name, address });
+  const [location] = await db.insert(locations).values({ name, address }).returning();
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_location", targetType: "location", targetId: location.id, details: { name } });
   revalidatePath("/admin/locations");
 }
 
 export async function toggleLocation(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   await db
     .update(locations)
     .set({ active: sql`NOT ${locations.active}` })
     .where(eq(locations.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "toggle_location", targetType: "location", targetId: id });
   revalidatePath("/admin/locations");
 }
 
 export async function updateLocation(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") || "").trim();
   const address = String(formData.get("address") || "").trim();
@@ -560,12 +599,13 @@ export async function updateLocation(formData: FormData) {
     .update(locations)
     .set({ name, address: address || null })
     .where(eq(locations.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "update_location", targetType: "location", targetId: id, details: { name } });
   revalidatePath("/admin/locations");
   redirect("/admin/locations?saved=1");
 }
 
 export async function deleteLocation(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const now = new Date();
 
@@ -610,6 +650,15 @@ export async function deleteLocation(formData: FormData) {
     await db.delete(locations).where(eq(locations.id, id));
   }
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: pastCount > 0 ? "archive_location" : "delete_location",
+    targetType: "location",
+    targetId: id,
+    details: { removed: removed.length, past: pastCount, refunded },
+  });
+
   revalidatePath("/admin/locations");
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
@@ -622,18 +671,19 @@ export async function deleteLocation(formData: FormData) {
 
 // ---------- Class types ----------
 export async function createClassType(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const color = String(formData.get("color") || "#C2185B");
   const description = String(formData.get("description") || "") || null;
   if (!name) return;
-  await db.insert(classTypes).values({ name, color, description });
+  const [classType] = await db.insert(classTypes).values({ name, color, description }).returning();
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_class_type", targetType: "class_type", targetId: classType.id, details: { name } });
   revalidatePath("/admin/locations");
 }
 
 // ---------- Packages ----------
 export async function createPackage(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const description = String(formData.get("description") || "") || null;
   const priceCents = Math.round(Number(formData.get("price") || 0) * 100);
@@ -667,24 +717,26 @@ export async function createPackage(formData: FormData) {
       .insert(packageLocations)
       .values(locationIds.map((locationId) => ({ packageId: pkg.id, locationId })));
   }
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_package", targetType: "package", targetId: pkg.id, details: { name, priceCents } });
   revalidatePath("/admin/packages");
   revalidatePath("/portal/packages");
 }
 
 export async function togglePackage(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   await db
     .update(packages)
     .set({ active: sql`NOT ${packages.active}` })
     .where(eq(packages.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "toggle_package", targetType: "package", targetId: id });
   revalidatePath("/admin/packages");
   revalidatePath("/portal/packages");
 }
 
 // ---------- Waiver ----------
 export async function updateWaiver(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const title = String(formData.get("title") || "").trim();
   const body = String(formData.get("body") || "").trim();
   if (!title || !body) return;
@@ -698,12 +750,13 @@ export async function updateWaiver(formData: FormData) {
   } else {
     await db.insert(waiverTemplate).values({ title, body, version: 1 });
   }
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "update_waiver", targetType: "waiver_template", details: { version: (current?.version ?? 0) + 1 } });
   revalidatePath("/admin/waiver");
 }
 
 // ---------- Promo codes (Stripe coupons + promotion codes) ----------
 export async function createPromoCode(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   if (!stripeConfigured()) {
     redirect("/admin/promo-codes?error=stripe_not_configured");
   }
@@ -761,8 +814,13 @@ export async function createPromoCode(formData: FormData) {
       ...(maxRedemptions > 0 ? { max_redemptions: maxRedemptions } : {}),
     });
     promotionCodeId = promotionCode.id;
-  } catch {
+  } catch (err) {
     // Most common cause: that code already exists on another active promotion.
+    await logError({
+      source: "create_promo_code",
+      message: err instanceof Error ? err.message : String(err),
+      context: { code, discountType },
+    });
     redirect("/admin/promo-codes?error=duplicate");
   }
 
@@ -781,16 +839,19 @@ export async function createPromoCode(formData: FormData) {
     await db.insert(promoCodeLocations).values(locationIds.map((locationId) => ({ promoCodeId: promoCode.id, locationId })));
   }
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_promo_code", targetType: "promo_code", targetId: promoCode.id, details: { code } });
+
   revalidatePath("/admin/promo-codes");
   redirect("/admin/promo-codes?created=1");
 }
 
 export async function togglePromoCode(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = String(formData.get("id") || "");
   const active = formData.get("active") === "true";
   if (!id) return;
   await stripe.promotionCodes.update(id, { active: !active });
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "toggle_promo_code", targetType: "promo_code", details: { stripePromotionCodeId: id, newActive: !active } });
   revalidatePath("/admin/promo-codes");
 }
 
@@ -803,7 +864,7 @@ export async function togglePromoCode(formData: FormData) {
  * the toggle, just not "deleted" here.
  */
 export async function deletePromoCode(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
 
@@ -813,12 +874,14 @@ export async function deletePromoCode(formData: FormData) {
   await stripe.promotionCodes.update(promoCode.stripePromotionCodeId, { active: false });
   await db.delete(promoCodes).where(eq(promoCodes.id, id));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "delete_promo_code", targetType: "promo_code", targetId: id, details: { code: promoCode.code } });
+
   revalidatePath("/admin/promo-codes");
 }
 
 // ---------- Customers ----------
 export async function createCustomer(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const phone = String(formData.get("phone") || "").trim();
@@ -869,12 +932,14 @@ export async function createCustomer(formData: FormData) {
     version: template?.version ?? 1,
   });
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_customer", targetType: "customer", targetId: customer.id, details: { name, email } });
+
   revalidatePath("/admin/customers");
   redirect(`/admin/customers/${customer.id}?created=1`);
 }
 
 export async function updateCustomer(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) redirect("/admin/customers?error=invalid");
   const name = String(formData.get("name") || "").trim();
@@ -914,13 +979,15 @@ export async function updateCustomer(formData: FormData) {
     .insert(userLocations)
     .values(locationIds.map((locationId) => ({ userId: id, locationId })));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "update_customer", targetType: "customer", targetId: id });
+
   revalidatePath(`/admin/customers/${id}`);
   revalidatePath("/admin/customers");
   redirect(`/admin/customers/${id}?updated=1`);
 }
 
 export async function updateCustomerNotes(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) redirect("/admin/customers?error=invalid");
   const notes = String(formData.get("notes") || "").trim() || null;
@@ -930,12 +997,14 @@ export async function updateCustomerNotes(formData: FormData) {
     .set({ notes })
     .where(and(eq(users.id, id), eq(users.role, "customer")));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "update_customer_notes", targetType: "customer", targetId: id });
+
   revalidatePath(`/admin/customers/${id}`);
   redirect(`/admin/customers/${id}?notes_updated=1`);
 }
 
 export async function updateMembership(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const customerId = Number(formData.get("customerId"));
   if (!id || !customerId) redirect("/admin/customers?error=invalid");
@@ -983,6 +1052,15 @@ export async function updateMembership(formData: FormData) {
     })
     .where(and(eq(memberships.id, id), eq(memberships.userId, customerId)));
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "update_membership",
+    targetType: "membership",
+    targetId: id,
+    details: { customerId, packageId, status, creditsRemaining, startsAtValue, endsAtValue, billingType },
+  });
+
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?membership_updated=1`);
 }
@@ -994,7 +1072,7 @@ export async function updateMembership(formData: FormData) {
  * paid-for time.
  */
 export async function freezeMembership(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const customerId = Number(formData.get("customerId"));
   if (!id || !customerId) redirect("/admin/customers?error=invalid");
@@ -1011,12 +1089,14 @@ export async function freezeMembership(formData: FormData) {
     .set({ status: "frozen", frozenAt: new Date() })
     .where(eq(memberships.id, id));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "freeze_membership", targetType: "membership", targetId: id, details: { customerId } });
+
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?membership_frozen=1`);
 }
 
 export async function unfreezeMembership(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const customerId = Number(formData.get("customerId"));
   if (!id || !customerId) redirect("/admin/customers?error=invalid");
@@ -1037,6 +1117,8 @@ export async function unfreezeMembership(formData: FormData) {
     .set({ status: "active", frozenAt: null, endsAt: newEndsAt })
     .where(eq(memberships.id, id));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "unfreeze_membership", targetType: "membership", targetId: id, details: { customerId, frozenDays } });
+
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?membership_unfrozen=${frozenDays}`);
 }
@@ -1047,7 +1129,7 @@ export async function unfreezeMembership(formData: FormData) {
  * is within the last week and hasn't already been converted.
  */
 export async function issueTrialCreditCode(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const customerId = Number(formData.get("customerId"));
   const membershipId = Number(formData.get("membershipId"));
   if (!customerId || !membershipId) redirect("/admin/customers?error=invalid");
@@ -1096,7 +1178,12 @@ export async function issueTrialCreditCode(formData: FormData) {
       max_redemptions: 1,
     });
     promotionCodeId = promotionCode.id;
-  } catch {
+  } catch (err) {
+    await logError({
+      source: "issue_trial_credit",
+      message: err instanceof Error ? err.message : String(err),
+      context: { customerId, membershipId, amountOffCents },
+    });
     redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
   }
 
@@ -1116,6 +1203,15 @@ export async function issueTrialCreditCode(formData: FormData) {
     .set({ trialCreditCode: code, trialCreditAmountCents: amountOffCents })
     .where(eq(memberships.id, membershipId));
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "issue_trial_credit_code",
+    targetType: "membership",
+    targetId: membershipId,
+    details: { customerId, code, amountOffCents },
+  });
+
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?trial_code=${code}&trial_code_amount=${amountOffCents}`);
 }
@@ -1127,7 +1223,7 @@ export async function issueTrialCreditCode(formData: FormData) {
  * first, same as a real purchase would.
  */
 export async function createMembershipForCustomer(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const customerId = Number(formData.get("customerId"));
   if (!customerId) redirect("/admin/customers?error=invalid");
 
@@ -1159,14 +1255,26 @@ export async function createMembershipForCustomer(formData: FormData) {
   if (!customer) redirect("/admin/customers?error=invalid");
 
   await rolloverUnusedCredits(customerId);
-  await db.insert(memberships).values({
-    userId: customerId,
-    packageId,
-    status,
-    creditsRemaining,
-    startsAt,
-    endsAt,
-    billingType,
+  const [membership] = await db
+    .insert(memberships)
+    .values({
+      userId: customerId,
+      packageId,
+      status,
+      creditsRemaining,
+      startsAt,
+      endsAt,
+      billingType,
+    })
+    .returning();
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "create_membership_for_customer",
+    targetType: "membership",
+    targetId: membership.id,
+    details: { customerId, packageId, status, creditsRemaining, startsAtValue, endsAtValue, billingType },
   });
 
   revalidatePath(`/admin/customers/${customerId}`);
@@ -1174,18 +1282,27 @@ export async function createMembershipForCustomer(formData: FormData) {
 }
 
 export async function deleteCustomer(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
+  const customer = await db.query.users.findFirst({ where: eq(users.id, id), columns: { name: true, email: true } });
   // Cascades their memberships, bookings, and waiver signature via FK.
   await db.delete(users).where(and(eq(users.id, id), eq(users.role, "customer")));
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "delete_customer",
+    targetType: "customer",
+    targetId: id,
+    details: { name: customer?.name, email: customer?.email },
+  });
   revalidatePath("/admin/customers");
   redirect("/admin/customers?deleted=1");
 }
 
 // ---------- Instructors ----------
 export async function createInstructor(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const phone = String(formData.get("phone") || "").trim();
@@ -1221,22 +1338,26 @@ export async function createInstructor(formData: FormData) {
     .insert(instructorLocations)
     .values(locationIds.map((locationId) => ({ userId: instructor.id, locationId })));
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "create_instructor", targetType: "instructor", targetId: instructor.id, details: { name, email } });
+
   revalidatePath("/admin/instructors");
   redirect("/admin/instructors?created=1");
 }
 
 export async function deleteInstructor(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
+  const instructor = await db.query.users.findFirst({ where: eq(users.id, id), columns: { name: true, email: true } });
   await db.delete(users).where(and(eq(users.id, id), eq(users.role, "instructor")));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "delete_instructor", targetType: "instructor", targetId: id, details: { name: instructor?.name, email: instructor?.email } });
   revalidatePath("/admin/instructors");
   redirect("/admin/instructors?deleted=1");
 }
 
 // ---------- Zelle payments ----------
 export async function updateZelleSettings(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const recipient = String(formData.get("recipient") || "").trim();
   const instructions = String(formData.get("instructions") || "").trim() || null;
   if (!recipient) {
@@ -1253,13 +1374,15 @@ export async function updateZelleSettings(formData: FormData) {
     await db.insert(zelleSettings).values({ recipient, instructions });
   }
 
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "update_zelle_settings", targetType: "zelle_settings", details: { recipient } });
+
   revalidatePath("/admin/zelle");
   revalidatePath("/portal/packages");
   redirect("/admin/zelle?saved=1");
 }
 
 export async function approveZellePayment(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
 
@@ -1320,25 +1443,35 @@ export async function approveZellePayment(formData: FormData) {
     portalUrl: `${baseUrl}/portal`,
   });
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "approve_zelle_payment",
+    targetType: "zelle_payment",
+    targetId: id,
+    details: { customerId: request.userId, membershipId: membership.id, amountCents: request.amountCents },
+  });
+
   revalidatePath("/admin/zelle");
   revalidatePath("/portal/packages");
 }
 
 export async function rejectZellePayment(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
   await db
     .update(zellePayments)
     .set({ status: "rejected", reviewedAt: new Date() })
     .where(and(eq(zellePayments.id, id), eq(zellePayments.status, "pending")));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "reject_zelle_payment", targetType: "zelle_payment", targetId: id });
   revalidatePath("/admin/zelle");
   revalidatePath("/portal/packages");
 }
 
 // ---------- Instructor pay ----------
 export async function markInstructorPayout(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const instructorId = Number(formData.get("instructorId"));
   const month = String(formData.get("month") || "");
   const status = formData.get("status") === "paid" ? "paid" : "due";
@@ -1355,13 +1488,22 @@ export async function markInstructorPayout(formData: FormData) {
       set: { status, comments, paidAt: status === "paid" ? new Date() : null },
     });
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "mark_instructor_payout",
+    targetType: "instructor_payout",
+    targetId: instructorId,
+    details: { month, status },
+  });
+
   revalidatePath("/admin/instructor-pay");
   redirect(`/admin/instructor-pay?month=${month}&saved=1`);
 }
 
 // ---------- Location finances ----------
 export async function addLocationExpense(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const locationId = Number(formData.get("locationId"));
   const date = String(formData.get("date") || "");
   const category = String(formData.get("category") || "").trim();
@@ -1375,12 +1517,24 @@ export async function addLocationExpense(formData: FormData) {
     redirect(`/admin/location-finances?error=invalid`);
   }
 
-  await db.insert(locationExpenses).values({
-    locationId,
-    date,
-    category,
-    amountCents: Math.round(amount * 100),
-    comment,
+  const [expense] = await db
+    .insert(locationExpenses)
+    .values({
+      locationId,
+      date,
+      category,
+      amountCents: Math.round(amount * 100),
+      comment,
+    })
+    .returning();
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "add_location_expense",
+    targetType: "location_expense",
+    targetId: expense.id,
+    details: { locationId, date, category, amountCents: expense.amountCents },
   });
 
   revalidatePath("/admin/location-finances");
@@ -1388,10 +1542,11 @@ export async function addLocationExpense(formData: FormData) {
 }
 
 export async function deleteLocationExpense(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
   await db.delete(locationExpenses).where(eq(locationExpenses.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "delete_location_expense", targetType: "location_expense", targetId: id });
   revalidatePath("/admin/location-finances");
   redirect(`/admin/location-finances?saved=1`);
 }
@@ -1400,7 +1555,7 @@ export async function deleteLocationExpense(formData: FormData) {
 // anything else that doesn't flow through a Stripe/Zelle membership
 // purchase and so wouldn't otherwise show up in the ledger.
 export async function addLocationRevenue(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const locationId = Number(formData.get("locationId"));
   const date = String(formData.get("date") || "");
   const customerName = String(formData.get("customerName") || "").trim();
@@ -1414,12 +1569,24 @@ export async function addLocationRevenue(formData: FormData) {
     redirect(`/admin/location-finances?error=invalid`);
   }
 
-  await db.insert(locationRevenueHistory).values({
-    locationId,
-    date,
-    customerName,
-    amountCents: Math.round(amount * 100),
-    comment,
+  const [revenue] = await db
+    .insert(locationRevenueHistory)
+    .values({
+      locationId,
+      date,
+      customerName,
+      amountCents: Math.round(amount * 100),
+      comment,
+    })
+    .returning();
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "add_location_revenue",
+    targetType: "location_revenue",
+    targetId: revenue.id,
+    details: { locationId, date, customerName, amountCents: revenue.amountCents },
   });
 
   revalidatePath("/admin/location-finances");
@@ -1427,17 +1594,18 @@ export async function addLocationRevenue(formData: FormData) {
 }
 
 export async function deleteLocationRevenue(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return;
   await db.delete(locationRevenueHistory).where(eq(locationRevenueHistory.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "delete_location_revenue", targetType: "location_revenue", targetId: id });
   revalidatePath("/admin/location-finances");
   redirect(`/admin/location-finances?saved=1`);
 }
 
 // ---------- Bulk email ----------
 export async function sendAdminBulkEmail(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const subject = String(formData.get("subject") || "").trim();
   const body = String(formData.get("body") || "").trim();
   const locationIdRaw = String(formData.get("locationId") || "").trim();
@@ -1474,11 +1642,20 @@ export async function sendAdminBulkEmail(formData: FormData) {
     body
   );
 
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "send_admin_bulk_email",
+    targetType: "location",
+    targetId: locationId ?? undefined,
+    details: { subject, recipientCount: sent },
+  });
+
   redirect(`/admin?email_sent=${sent}`);
 }
 
 export async function sendAdminCustomerEmail(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const customerId = Number(formData.get("customerId"));
   const subject = String(formData.get("subject") || "").trim();
   const body = String(formData.get("body") || "").trim();
@@ -1500,6 +1677,15 @@ export async function sendAdminCustomerEmail(formData: FormData) {
   }
 
   await sendSingleEmail("Holistic Rhythm <team@myholisticrhythm.com>", customer.email, subject, body);
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "send_admin_customer_email",
+    targetType: "customer",
+    targetId: customerId,
+    details: { subject },
+  });
 
   params.set("email_sent", "1");
   redirect(`/admin/customers?${params.toString()}`);
