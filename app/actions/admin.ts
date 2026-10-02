@@ -1128,6 +1128,80 @@ export async function unfreezeMembership(formData: FormData) {
  * alternative to an actual Stripe refund — only valid while the trial class
  * is within the last week and hasn't already been converted.
  */
+/**
+ * Creates the Stripe coupon + promotion code for a trial credit, registers
+ * it in our own promoCodes table (scoped to just this customer, one use —
+ * see resolvePromoCode, which checks that table before ever consulting
+ * Stripe), and stamps it onto the membership. Shared by issuing a code for
+ * the first time and by void-and-regenerate.
+ */
+async function createTrialCreditCode(
+  customerId: number,
+  membershipId: number,
+  amountOffCents: number
+): Promise<string> {
+  const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  let couponId: string;
+  let promotionCodeId: string;
+  try {
+    const coupon = await stripe.coupons.create({
+      amount_off: amountOffCents,
+      currency: "usd",
+      duration: "once",
+      name: `Trial credit (membership #${membershipId})`,
+    });
+    couponId = coupon.id;
+    const promotionCode = await stripe.promotionCodes.create({
+      coupon: coupon.id,
+      code,
+      active: true,
+      max_redemptions: 1,
+    });
+    promotionCodeId = promotionCode.id;
+  } catch (err) {
+    await logError({
+      source: "issue_trial_credit",
+      message: err instanceof Error ? err.message : String(err),
+      context: { customerId, membershipId, amountOffCents },
+    });
+    redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
+  }
+
+  const [promoCode] = await db
+    .insert(promoCodes)
+    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId, maxUsesPerCustomer: 1 })
+    .returning();
+  await db.insert(promoCodeCustomers).values({ promoCodeId: promoCode.id, userId: customerId });
+
+  await db
+    .update(memberships)
+    .set({ trialCreditCode: code, trialCreditAmountCents: amountOffCents })
+    .where(eq(memberships.id, membershipId));
+
+  return code;
+}
+
+/**
+ * Deactivates a trial credit's Stripe promotion code and removes our own
+ * tracking row (same "no real delete, only deactivate" constraint as
+ * deletePromoCode) — doesn't touch the membership's trialCreditCode itself,
+ * callers clear that afterward.
+ */
+async function voidTrialCreditStripeObjects(code: string): Promise<void> {
+  const promoCode = await db.query.promoCodes.findFirst({ where: eq(promoCodes.code, code) });
+  if (!promoCode) return;
+  try {
+    await stripe.promotionCodes.update(promoCode.stripePromotionCodeId, { active: false });
+  } catch (err) {
+    await logError({
+      source: "void_trial_credit",
+      message: err instanceof Error ? err.message : String(err),
+      context: { code, stripePromotionCodeId: promoCode.stripePromotionCodeId },
+    });
+  }
+  await db.delete(promoCodes).where(eq(promoCodes.id, promoCode.id));
+}
+
 export async function issueTrialCreditCode(formData: FormData) {
   const admin = await requireAdmin();
   const customerId = Number(formData.get("customerId"));
@@ -1159,49 +1233,7 @@ export async function issueTrialCreditCode(formData: FormData) {
   }
 
   const amountOffCents = await getAmountPaidCents(membership);
-
-  const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-  let couponId: string;
-  let promotionCodeId: string;
-  try {
-    const coupon = await stripe.coupons.create({
-      amount_off: amountOffCents,
-      currency: "usd",
-      duration: "once",
-      name: `Trial credit (membership #${membership.id})`,
-    });
-    couponId = coupon.id;
-    const promotionCode = await stripe.promotionCodes.create({
-      coupon: coupon.id,
-      code,
-      active: true,
-      max_redemptions: 1,
-    });
-    promotionCodeId = promotionCode.id;
-  } catch (err) {
-    await logError({
-      source: "issue_trial_credit",
-      message: err instanceof Error ? err.message : String(err),
-      context: { customerId, membershipId, amountOffCents },
-    });
-    redirect(`/admin/customers/${customerId}?error=trial_code_failed`);
-  }
-
-  // Stripe knows this code exists, but checkout validates codes against our
-  // own promoCodes table first (see resolvePromoCode) — without this row the
-  // code would always come back "not valid" regardless of Stripe. Scoped to
-  // just this customer, one use, since it's compensation for their specific
-  // trial class.
-  const [promoCode] = await db
-    .insert(promoCodes)
-    .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId, maxUsesPerCustomer: 1 })
-    .returning();
-  await db.insert(promoCodeCustomers).values({ promoCodeId: promoCode.id, userId: customerId });
-
-  await db
-    .update(memberships)
-    .set({ trialCreditCode: code, trialCreditAmountCents: amountOffCents })
-    .where(eq(memberships.id, membershipId));
+  const code = await createTrialCreditCode(customerId, membershipId, amountOffCents);
 
   await logAudit({
     actorId: admin.userId,
@@ -1214,6 +1246,54 @@ export async function issueTrialCreditCode(formData: FormData) {
 
   revalidatePath(`/admin/customers/${customerId}`);
   redirect(`/admin/customers/${customerId}?trial_code=${code}&trial_code_amount=${amountOffCents}`);
+}
+
+/**
+ * Voids a previously-issued trial credit code (e.g. it turned out broken,
+ * or the customer lost it) and immediately issues a fresh one in its place
+ * — same amount, same membership, new code. Doesn't re-check the one-week
+ * trial window: that gate is meant to stop issuing a code long after the
+ * fact, not to block fixing one that was already (attemptedly) granted.
+ */
+export async function voidAndRegenerateTrialCreditCode(formData: FormData) {
+  const admin = await requireAdmin();
+  const customerId = Number(formData.get("customerId"));
+  const membershipId = Number(formData.get("membershipId"));
+  if (!customerId || !membershipId) redirect("/admin/customers?error=invalid");
+
+  if (!stripeConfigured()) {
+    redirect(`/admin/customers/${customerId}?error=stripe_not_configured`);
+  }
+
+  const membership = await db.query.memberships.findFirst({
+    where: and(eq(memberships.id, membershipId), eq(memberships.userId, customerId)),
+  });
+  if (!membership || !membership.trialCreditCode) {
+    redirect(`/admin/customers/${customerId}`);
+  }
+
+  const oldCode = membership.trialCreditCode!;
+  const amountOffCents = membership.trialCreditAmountCents ?? 0;
+
+  await voidTrialCreditStripeObjects(oldCode);
+  await db
+    .update(memberships)
+    .set({ trialCreditCode: null, trialCreditAmountCents: null })
+    .where(eq(memberships.id, membershipId));
+
+  const newCode = await createTrialCreditCode(customerId, membershipId, amountOffCents);
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "void_and_regenerate_trial_credit_code",
+    targetType: "membership",
+    targetId: membershipId,
+    details: { customerId, oldCode, newCode, amountOffCents },
+  });
+
+  revalidatePath(`/admin/customers/${customerId}`);
+  redirect(`/admin/customers/${customerId}?trial_code=${newCode}&trial_code_amount=${amountOffCents}`);
 }
 
 /**

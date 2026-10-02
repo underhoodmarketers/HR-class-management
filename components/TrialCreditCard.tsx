@@ -1,4 +1,6 @@
-import { issueTrialCreditCode } from "@/app/actions/admin";
+"use client";
+
+import { issueTrialCreditCode, voidAndRegenerateTrialCreditCode } from "@/app/actions/admin";
 import { SubmitButton } from "./SubmitButton";
 import { formatDay, formatMoney } from "@/lib/utils";
 
@@ -20,10 +22,29 @@ export default function TrialCreditCard({
     <div className="card p-6">
       <h2 className="mb-3 text-sm font-700 uppercase tracking-wide text-ink/50">Trial credit</h2>
       {code ? (
-        <p className="text-sm text-ink/70">
-          Code <span className="font-mono font-600 text-magenta-deep">{code}</span> — {amount} off
-          their next purchase. Share this with the customer.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-ink/70">
+            Code <span className="font-mono font-600 text-magenta-deep">{code}</span> — {amount} off
+            their next purchase. Share this with the customer.
+          </p>
+          <form
+            action={voidAndRegenerateTrialCreditCode}
+            onSubmit={(e) => {
+              if (
+                !confirm(
+                  `Void ${code} and generate a new code?\n\nThe old code stops working immediately — only the new one will be usable.`
+                )
+              )
+                e.preventDefault();
+            }}
+          >
+            <input type="hidden" name="customerId" value={customerId} />
+            <input type="hidden" name="membershipId" value={membershipId} />
+            <SubmitButton className="btn-subtle whitespace-nowrap text-xs" pendingText="Regenerating…">
+              Void &amp; generate new code
+            </SubmitButton>
+          </form>
+        </div>
       ) : (
         <form action={issueTrialCreditCode} className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-ink/60">
