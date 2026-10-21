@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   editSession,
   cancelSession,
+  uncancelSession,
   deleteSession,
   deleteSeries,
 } from "@/app/actions/admin";
@@ -260,7 +261,12 @@ export default function SessionRow({
             <input type="hidden" name="id" value={session.id} />
             <button className="btn-ghost px-3 py-1.5 text-xs">Cancel</button>
           </form>
-        ) : null}
+        ) : (
+          <form action={uncancelSession}>
+            <input type="hidden" name="id" value={session.id} />
+            <button className="btn-ghost px-3 py-1.5 text-xs">Uncancel</button>
+          </form>
+        )}
 
         <form
           action={deleteSession}

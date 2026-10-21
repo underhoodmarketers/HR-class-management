@@ -553,6 +553,23 @@ export async function cancelSession(formData: FormData) {
   revalidatePath("/admin");
 }
 
+/**
+ * Reverses a mistaken cancellation — any bookings that existed before the
+ * cancel are already gone (refundBookingsForSessions marks them canceled,
+ * it doesn't delete them), so this just reopens the slot for new bookings.
+ * It does not restore whoever was booked before the cancel; that's a
+ * separate re-booking action if needed.
+ */
+export async function uncancelSession(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = Number(formData.get("id"));
+  await db.update(classSessions).set({ canceled: false }).where(eq(classSessions.id, id));
+  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "uncancel_session", targetType: "class_session", targetId: id });
+  revalidatePath("/admin/calendar");
+  revalidatePath(`/admin/calendar/session/${id}`);
+  revalidatePath("/admin");
+}
+
 export async function deleteSession(formData: FormData) {
   const admin = await requireAdmin();
   const id = Number(formData.get("id"));
