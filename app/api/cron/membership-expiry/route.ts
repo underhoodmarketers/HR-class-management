@@ -104,15 +104,29 @@ export async function GET(req: NextRequest) {
     with: { user: true, package: true },
   });
   for (const m of expiredCandidates) {
-    const active = await getActiveMembership(m.userId);
-    if (active && active.membership.id !== m.id) continue;
+    // A still-auto-renewing subscription genuinely hasn't ended yet — Stripe's
+    // own invoice.paid webhook rolls over its credits and creates the next
+    // cycle's row, so skip entirely here.
     if (await isStillAutoRenewing(m)) continue;
 
-    await sendMembershipExpiredEmail(m.user.email, {
-      name: m.user.name,
-      packageName: m.package.name,
-      portalUrl,
-    });
+    // Superseded (a newer membership already exists) only means "don't
+    // bother emailing them" — it must NOT also skip the expire+sweep below.
+    // A customer who renews before their current package runs out (the
+    // common, encouraged case) would otherwise have this membership
+    // permanently skipped by every future run, since a newer one will
+    // always exist from here on — its leftover credits would never be
+    // swept and its status would never leave "active".
+    const active = await getActiveMembership(m.userId);
+    const superseded = active !== null && active.membership.id !== m.id;
+
+    if (!superseded) {
+      await sendMembershipExpiredEmail(m.user.email, {
+        name: m.user.name,
+        packageName: m.package.name,
+        portalUrl,
+      });
+      expiredSent++;
+    }
 
     // Credits left unused on an expiring package become banked makeup
     // credits — mirrors rolloverUnusedCredits, which only fires at the next
@@ -131,11 +145,13 @@ export async function GET(req: NextRequest) {
       .update(memberships)
       .set({
         status: "expired",
+        // Doubles as "this membership has been fully processed by the
+        // cron" even when superseded skips the actual email — needed so
+        // the WHERE clause above doesn't keep re-selecting it forever.
         expiredEmailSentAt: new Date(),
         ...(hasLeftoverCredits ? { creditsRemaining: 0 } : {}),
       })
       .where(eq(memberships.id, m.id));
-    expiredSent++;
   }
 
   return NextResponse.json({ ok: true, remindersSent, expiredSent });
