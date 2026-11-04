@@ -79,6 +79,12 @@ export const classSessions = pgTable(
       onDelete: "set null",
     }),
     canceled: boolean("canceled").notNull().default(false),
+    // JSON array of booking ids auto-canceled (with credits refunded) by the
+    // most recent cancelSession call — lets uncancelSession restore exactly
+    // those bookings and reverse exactly those refunds, instead of just
+    // reopening the slot with everyone's spot gone. Null once uncanceled, or
+    // if this class has never been canceled.
+    autoCanceledBookingIds: text("auto_canceled_booking_ids"),
     // Classes created together as a weekly series share this id, so they can
     // be edited or removed as a group. Null for one-off classes.
     seriesId: varchar("series_id", { length: 40 }),

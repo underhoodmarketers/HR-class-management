@@ -62,8 +62,8 @@ import { logAudit, logError } from "@/lib/logging";
  * Must be called BEFORE deleting the sessions, since deleting a session
  * cascades its bookings away.
  */
-async function refundBookingsForSessions(sessionIds: number[]) {
-  if (sessionIds.length === 0) return 0;
+async function refundBookingsForSessions(sessionIds: number[]): Promise<number[]> {
+  if (sessionIds.length === 0) return [];
 
   const affected = await db
     .select({ id: bookings.id })
@@ -72,7 +72,7 @@ async function refundBookingsForSessions(sessionIds: number[]) {
       and(inArray(bookings.sessionId, sessionIds), eq(bookings.status, "booked"))
     );
 
-  if (affected.length === 0) return 0;
+  if (affected.length === 0) return [];
 
   const sessionIdList = sql.join(
     sessionIds.map((id) => sql`${id}`),
@@ -136,7 +136,7 @@ async function refundBookingsForSessions(sessionIds: number[]) {
       and(inArray(bookings.sessionId, sessionIds), eq(bookings.status, "booked"))
     );
 
-  return affected.length;
+  return affected.map((b) => b.id);
 }
 
 /**
@@ -399,12 +399,12 @@ export async function deleteSeries(formData: FormData) {
     action: "delete_series",
     targetType: "class_session",
     targetId: id,
-    details: { deletedCount: ids.length, refunded },
+    details: { deletedCount: ids.length, refunded: refunded.length },
   });
 
   revalidatePath("/admin/calendar");
   revalidatePath("/admin");
-  redirect(`/admin/calendar?deleted=${ids.length}&refunded=${refunded}`);
+  redirect(`/admin/calendar?deleted=${ids.length}&refunded=${refunded.length}`);
 }
 
 /**
@@ -544,27 +544,95 @@ export async function adminCancelBooking(formData: FormData) {
 export async function cancelSession(formData: FormData) {
   const admin = await requireAdmin();
   const id = Number(formData.get("id"));
-  // Members lose their spot, so give the credits back.
-  await refundBookingsForSessions([id]);
-  await db.update(classSessions).set({ canceled: true }).where(eq(classSessions.id, id));
-  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "cancel_session", targetType: "class_session", targetId: id });
+  // Members lose their spot, so give the credits back — remember exactly
+  // which bookings this touched, so uncancelSession can restore precisely
+  // these later rather than just reopening an empty slot.
+  const canceledBookingIds = await refundBookingsForSessions([id]);
+  await db
+    .update(classSessions)
+    .set({
+      canceled: true,
+      autoCanceledBookingIds: canceledBookingIds.length > 0 ? JSON.stringify(canceledBookingIds) : null,
+    })
+    .where(eq(classSessions.id, id));
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "cancel_session",
+    targetType: "class_session",
+    targetId: id,
+    details: { refundedBookings: canceledBookingIds.length },
+  });
   revalidatePath("/admin/calendar");
   revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
 }
 
 /**
- * Reverses a mistaken cancellation — any bookings that existed before the
- * cancel are already gone (refundBookingsForSessions marks them canceled,
- * it doesn't delete them), so this just reopens the slot for new bookings.
- * It does not restore whoever was booked before the cancel; that's a
- * separate re-booking action if needed.
+ * Reverses a mistaken cancellation: reopens the slot AND restores exactly
+ * the bookings refundBookingsForSessions touched at cancel time, reversing
+ * each one's credit refund the same way it was given (membership credit,
+ * makeup credit, or owed-credit clearance) — not just blanket "give a
+ * credit back", which would double-pay a makeup/owed-credit customer.
+ * Only acts on bookings still in "canceled" status, in case one was
+ * independently handled since (e.g. a manual admin action) — those are
+ * left alone rather than overwritten.
  */
 export async function uncancelSession(formData: FormData) {
   const admin = await requireAdmin();
   const id = Number(formData.get("id"));
-  await db.update(classSessions).set({ canceled: false }).where(eq(classSessions.id, id));
-  await logAudit({ actorId: admin.userId, actorName: admin.name, action: "uncancel_session", targetType: "class_session", targetId: id });
+
+  const session = await db.query.classSessions.findFirst({ where: eq(classSessions.id, id) });
+  if (!session) redirect("/admin/calendar");
+
+  let bookingIds: number[] = [];
+  try {
+    if (session.autoCanceledBookingIds) bookingIds = JSON.parse(session.autoCanceledBookingIds);
+  } catch {
+    bookingIds = [];
+  }
+
+  let restoredCount = 0;
+  if (bookingIds.length > 0) {
+    const toRestore = await db.query.bookings.findMany({
+      where: and(inArray(bookings.id, bookingIds), eq(bookings.status, "canceled")),
+    });
+
+    for (const b of toRestore) {
+      if (b.fromMakeupCredit) {
+        await db.update(users).set({ makeupCredits: sql`${users.makeupCredits} - 1` }).where(eq(users.id, b.userId));
+      } else if (b.fromOwedCredit) {
+        await db.update(users).set({ creditsOwed: sql`${users.creditsOwed} + 1` }).where(eq(users.id, b.userId));
+      } else if (b.membershipId) {
+        await db
+          .update(memberships)
+          .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
+          .where(and(eq(memberships.id, b.membershipId), sql`${memberships.creditsRemaining} IS NOT NULL`));
+      }
+    }
+
+    if (toRestore.length > 0) {
+      await db
+        .update(bookings)
+        .set({ status: "booked" })
+        .where(inArray(bookings.id, toRestore.map((b) => b.id)));
+      restoredCount = toRestore.length;
+    }
+  }
+
+  await db
+    .update(classSessions)
+    .set({ canceled: false, autoCanceledBookingIds: null })
+    .where(eq(classSessions.id, id));
+
+  await logAudit({
+    actorId: admin.userId,
+    actorName: admin.name,
+    action: "uncancel_session",
+    targetType: "class_session",
+    targetId: id,
+    details: { restoredBookings: restoredCount },
+  });
   revalidatePath("/admin/calendar");
   revalidatePath(`/admin/calendar/session/${id}`);
   revalidatePath("/admin");
@@ -673,7 +741,7 @@ export async function deleteLocation(formData: FormData) {
     action: pastCount > 0 ? "archive_location" : "delete_location",
     targetType: "location",
     targetId: id,
-    details: { removed: removed.length, past: pastCount, refunded },
+    details: { removed: removed.length, past: pastCount, refunded: refunded.length },
   });
 
   revalidatePath("/admin/locations");
@@ -682,7 +750,7 @@ export async function deleteLocation(formData: FormData) {
   redirect(
     `/admin/locations?${pastCount > 0 ? "archived" : "deleted"}=1&removed=${
       removed.length
-    }&past=${pastCount}&refunded=${refunded}`
+    }&past=${pastCount}&refunded=${refunded.length}`
   );
 }
 

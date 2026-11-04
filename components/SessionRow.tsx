@@ -262,7 +262,17 @@ export default function SessionRow({
             <button className="btn-ghost px-3 py-1.5 text-xs">Cancel</button>
           </form>
         ) : (
-          <form action={uncancelSession}>
+          <form
+            action={uncancelSession}
+            onSubmit={(e) => {
+              if (
+                !confirm(
+                  "Uncancel this class?\n\nReopens it and restores whoever was booked when it was canceled, reversing their credit refunds."
+                )
+              )
+                e.preventDefault();
+            }}
+          >
             <input type="hidden" name="id" value={session.id} />
             <button className="btn-ghost px-3 py-1.5 text-xs">Uncancel</button>
           </form>
