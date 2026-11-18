@@ -25,7 +25,16 @@ export async function getActiveMembership(userId: number, options: { requireStar
       gt(memberships.endsAt, now)
     ),
     with: { package: { with: { locations: true } } },
-    orderBy: [desc(memberships.endsAt)],
+    // A customer can hold several started memberships at once only via
+    // separate Drop-In purchases (a real package always queues behind
+    // whatever's active instead of overlapping it) — so prefer one that
+    // still has a credit left over one that's exhausted, and among those,
+    // the one ending soonest, so an about-to-expire credit gets used
+    // before a longer-lived one sits idle.
+    orderBy: [
+      desc(sql`CASE WHEN ${memberships.creditsRemaining} IS NULL OR ${memberships.creditsRemaining} > 0 THEN 1 ELSE 0 END`),
+      asc(memberships.endsAt),
+    ],
   });
 
   let membership = started;
