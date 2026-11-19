@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getPackageLocationOptions, addPreferredLocation } from "@/app/actions/checkout";
+import { useEffect, useRef, useState } from "react";
+import { getPackageLocationOptions, addPreferredLocation, removePreferredLocation } from "@/app/actions/checkout";
 
 /**
  * A Drop-In doesn't have a weekly schedule to build like a real package
@@ -12,6 +12,10 @@ import { getPackageLocationOptions, addPreferredLocation } from "@/app/actions/c
 export default function DropInLocationPicker({ packageId }: { packageId: number }) {
   const [options, setOptions] = useState<{ id: number; name: string }[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // Which studio this widget itself most recently added, so changing the
+  // selection can undo that one specific addition instead of leaving it
+  // stuck alongside whatever the customer actually picked.
+  const addedIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     getPackageLocationOptions(packageId).then((locs) => {
@@ -19,13 +23,18 @@ export default function DropInLocationPicker({ packageId }: { packageId: number 
       if (locs.length > 0) {
         setSelected(locs[0].id);
         addPreferredLocation(locs[0].id);
+        addedIdRef.current = locs[0].id;
       }
     });
   }, [packageId]);
 
   const handleChange = (id: number) => {
     setSelected(id);
+    if (addedIdRef.current !== null && addedIdRef.current !== id) {
+      removePreferredLocation(addedIdRef.current);
+    }
     addPreferredLocation(id);
+    addedIdRef.current = id;
   };
 
   if (options === null) {

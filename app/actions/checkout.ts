@@ -110,6 +110,19 @@ export async function addPreferredLocation(locationId: number): Promise<void> {
 }
 
 /**
+ * Undoes addPreferredLocation — used by the Drop-In studio picker when the
+ * customer changes their selection, so the auto-added default (or a
+ * previous pick) doesn't stick around alongside whatever they actually
+ * chose.
+ */
+export async function removePreferredLocation(locationId: number): Promise<void> {
+  const session = await requireUser();
+  await db
+    .delete(userLocations)
+    .where(and(eq(userLocations.userId, session.userId), eq(userLocations.locationId, locationId)));
+}
+
+/**
  * Creates a Stripe Checkout Session in embedded mode and returns its
  * client secret, so the payment form can render inline on our own page
  * instead of redirecting to checkout.stripe.com.
