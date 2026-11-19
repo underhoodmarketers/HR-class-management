@@ -89,6 +89,66 @@ export default async function InstructorPayPage({
 
   const grandTotalCents = rows.reduce((sum, r) => sum + r.totalCents, 0);
 
+  const activeInstructorId = searchParams.id ? Number(searchParams.id) : rows[0]?.instructor.id;
+  const activeRow = rows.find((r) => r.instructor.id === activeInstructorId) ?? rows[0];
+
+  // Full pay history for the selected instructor — every month they've
+  // ever had a completed class, not just the one currently on screen —
+  // so "Total" and "all months due/paid" don't require clicking through
+  // each month one at a time.
+  type MonthHistory = {
+    monthKey: string;
+    completedCount: number;
+    totalCents: number;
+    status: "due" | "paid";
+    comments: string | null;
+  };
+  let history: MonthHistory[] = [];
+  let lifetimeTotalCents = 0;
+  let lifetimePaidCents = 0;
+
+  if (groupBy === "instructor" && activeRow) {
+    const [allSessionsRaw, allPayoutsForInstructor] = await Promise.all([
+      db.query.classSessions.findMany({
+        where: lt(classSessions.startsAt, now),
+        columns: { startsAt: true, canceled: true, assignedInstructorId: true, instructor: true },
+      }),
+      db.query.instructorPayouts.findMany({
+        where: eq(instructorPayouts.instructorId, activeRow.instructor.id),
+      }),
+    ]);
+
+    const mine = allSessionsRaw.filter(
+      (s) =>
+        !s.canceled &&
+        (s.assignedInstructorId === activeRow.instructor.id ||
+          (!s.assignedInstructorId &&
+            s.instructor?.trim().toLowerCase() === activeRow.instructor.name.trim().toLowerCase()))
+    );
+
+    const countByMonth = new Map<string, number>();
+    for (const s of mine) {
+      const mk = studioDateKey(s.startsAt).slice(0, 7);
+      countByMonth.set(mk, (countByMonth.get(mk) ?? 0) + 1);
+    }
+    const payoutByMonth = new Map(allPayoutsForInstructor.map((p) => [p.month, p]));
+
+    history = Array.from(countByMonth.entries())
+      .map(([mk, completedCount]) => ({
+        monthKey: mk,
+        completedCount,
+        totalCents: completedCount * RATE_CENTS,
+        status: (payoutByMonth.get(mk)?.status === "paid" ? "paid" : "due") as "due" | "paid",
+        comments: payoutByMonth.get(mk)?.comments ?? null,
+      }))
+      .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1));
+
+    lifetimeTotalCents = history.reduce((sum, m) => sum + m.totalCents, 0);
+    lifetimePaidCents = history
+      .filter((m) => m.status === "paid")
+      .reduce((sum, m) => sum + m.totalCents, 0);
+  }
+
   // Same per-instructor pay data, just regrouped so each studio shows who
   // taught there and what's owed to them for those classes specifically —
   // due/paid is still tracked per instructor per month (not per studio), so
@@ -130,19 +190,19 @@ export default async function InstructorPayPage({
         <h2 className="font-600">{monthLabel(monthKey)}</h2>
         <div className="flex items-center gap-1.5">
           <Link
-            href={buildUrl(searchParams, { month: prevMonth, id: "" })}
+            href={buildUrl(searchParams, { month: prevMonth })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             ‹
           </Link>
           <Link
-            href={buildUrl(searchParams, { month: todayKey.slice(0, 7), id: "" })}
+            href={buildUrl(searchParams, { month: todayKey.slice(0, 7) })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             This month
           </Link>
           <Link
-            href={buildUrl(searchParams, { month: nextMonth, id: "" })}
+            href={buildUrl(searchParams, { month: nextMonth })}
             className="btn-ghost px-3 py-1.5 text-xs"
           >
             ›
@@ -170,46 +230,50 @@ export default async function InstructorPayPage({
       </div>
 
       {groupBy === "instructor" ? (
-        rows.length === 0 ? (
+        rows.length === 0 || !activeRow ? (
           <div className="card p-8 text-center text-ink/40">No classes assigned this month.</div>
         ) : (
-          (() => {
-            const selectedId = searchParams.id ? Number(searchParams.id) : rows[0].instructor.id;
-            const active = rows.find((r) => r.instructor.id === selectedId) ?? rows[0];
-            return (
-              <>
-                <div className="flex flex-wrap gap-1.5">
-                  {rows.map((r) => (
-                    <Link
-                      key={r.instructor.id}
-                      href={buildUrl(searchParams, { id: String(r.instructor.id) })}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        r.instructor.id === active.instructor.id
-                          ? "bg-magenta text-white"
-                          : "bg-blush/40 text-ink/60 hover:bg-blush"
-                      }`}
-                    >
-                      {r.instructor.name}{" "}
-                      <span className={r.instructor.id === active.instructor.id ? "text-white/80" : "text-ink/40"}>
-                        ({formatMoney(r.totalCents)})
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-                <InstructorPayCard
-                  instructorId={active.instructor.id}
-                  name={active.instructor.name}
-                  sessions={active.sessions}
-                  completedCount={active.completedCount}
-                  totalCents={active.totalCents}
-                  payout={active.payout}
-                  monthKey={monthKey}
-                  now={now}
-                  showLocation
-                />
-              </>
-            );
-          })()
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {rows.map((r) => (
+                <Link
+                  key={r.instructor.id}
+                  href={buildUrl(searchParams, { id: String(r.instructor.id) })}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    r.instructor.id === activeRow.instructor.id
+                      ? "bg-magenta text-white"
+                      : "bg-blush/40 text-ink/60 hover:bg-blush"
+                  }`}
+                >
+                  {r.instructor.name}{" "}
+                  <span className={r.instructor.id === activeRow.instructor.id ? "text-white/80" : "text-ink/40"}>
+                    ({formatMoney(r.totalCents)})
+                  </span>
+                </Link>
+              ))}
+            </div>
+            <InstructorPayCard
+              instructorId={activeRow.instructor.id}
+              name={activeRow.instructor.name}
+              sessions={activeRow.sessions}
+              completedCount={activeRow.completedCount}
+              totalCents={activeRow.totalCents}
+              payout={activeRow.payout}
+              monthKey={monthKey}
+              now={now}
+              showLocation
+              returnTo={buildUrl(searchParams, {})}
+            />
+            <InstructorHistory
+              name={activeRow.instructor.name}
+              history={history}
+              lifetimeTotalCents={lifetimeTotalCents}
+              lifetimePaidCents={lifetimePaidCents}
+              instructorId={activeRow.instructor.id}
+              returnTo={buildUrl(searchParams, {})}
+              currentMonthKey={monthKey}
+            />
+          </>
         )
       ) : locationGroups.length === 0 ? (
         <div className="card p-8 text-center text-ink/40">No classes assigned this month.</div>
@@ -275,6 +339,7 @@ function InstructorPayCard({
   monthKey,
   now,
   showLocation,
+  returnTo,
 }: {
   instructorId: number;
   name: string;
@@ -291,6 +356,7 @@ function InstructorPayCard({
   monthKey: string;
   now: Date;
   showLocation: boolean;
+  returnTo?: string;
 }) {
   const status = payout?.status ?? "due";
   return (
@@ -332,6 +398,7 @@ function InstructorPayCard({
       <form action={markInstructorPayout} className="mt-4 flex flex-wrap items-center gap-2 border-t border-ink/5 pt-4">
         <input type="hidden" name="instructorId" value={instructorId} />
         <input type="hidden" name="month" value={monthKey} />
+        {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
         <input
           name="comments"
           defaultValue={payout?.comments ?? ""}
@@ -345,6 +412,100 @@ function InstructorPayCard({
           Mark paid
         </button>
       </form>
+    </div>
+  );
+}
+
+function InstructorHistory({
+  name,
+  history,
+  lifetimeTotalCents,
+  lifetimePaidCents,
+  instructorId,
+  returnTo,
+  currentMonthKey,
+}: {
+  name: string;
+  history: {
+    monthKey: string;
+    completedCount: number;
+    totalCents: number;
+    status: "due" | "paid";
+    comments: string | null;
+  }[];
+  lifetimeTotalCents: number;
+  lifetimePaidCents: number;
+  instructorId: number;
+  returnTo: string;
+  currentMonthKey: string;
+}) {
+  const lifetimeDueCents = lifetimeTotalCents - lifetimePaidCents;
+  return (
+    <div className="card space-y-5 p-6">
+      <div>
+        <h3 className="font-600">{name} — all months</h3>
+        <p className="text-sm text-ink/50">Every month with a completed class, across all time.</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl bg-blush/30 p-3">
+          <p className="text-xs text-ink/50">Lifetime total</p>
+          <p className="mt-1 font-display text-xl font-600">{formatMoney(lifetimeTotalCents)}</p>
+        </div>
+        <div className="rounded-xl bg-emerald-50 p-3">
+          <p className="text-xs text-ink/50">Paid</p>
+          <p className="mt-1 font-display text-xl font-600 text-emerald-700">{formatMoney(lifetimePaidCents)}</p>
+        </div>
+        <div className="rounded-xl bg-amber-50 p-3">
+          <p className="text-xs text-ink/50">Due</p>
+          <p className="mt-1 font-display text-xl font-600 text-amber-700">{formatMoney(lifetimeDueCents)}</p>
+        </div>
+      </div>
+
+      {history.length === 0 ? (
+        <p className="text-sm text-ink/40">No completed classes yet.</p>
+      ) : (
+        <ul className="divide-y divide-ink/5 text-sm">
+          {history.map((m) => (
+            <li key={m.monthKey} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+              <div>
+                <span className="font-500">{monthLabel(m.monthKey)}</span>
+                <span className="ml-2 text-ink/50">
+                  {m.completedCount} class{m.completedCount === 1 ? "" : "es"} · {formatMoney(m.totalCents)}
+                </span>
+                {m.monthKey === currentMonthKey ? (
+                  <span className="ml-2 text-xs text-ink/30">(viewing above)</span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`badge ${
+                    m.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {m.status === "paid" ? "Paid" : "Due"}
+                </span>
+                <form action={markInstructorPayout}>
+                  <input type="hidden" name="instructorId" value={instructorId} />
+                  <input type="hidden" name="month" value={m.monthKey} />
+                  <input type="hidden" name="comments" value={m.comments ?? ""} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <button
+                    type="submit"
+                    name="status"
+                    value={m.status === "paid" ? "due" : "paid"}
+                    className={
+                      m.status === "paid" ? "btn-subtle px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"
+                    }
+                  >
+                    {m.status === "paid" ? "Mark due" : "Mark paid"}
+                  </button>
+                </form>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

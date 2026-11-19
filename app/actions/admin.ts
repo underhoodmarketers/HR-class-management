@@ -1641,6 +1641,11 @@ export async function markInstructorPayout(formData: FormData) {
   const month = String(formData.get("month") || "");
   const status = formData.get("status") === "paid" ? "paid" : "due";
   const comments = String(formData.get("comments") || "").trim() || null;
+  // Where to land afterward — defaults to the month just marked (old
+  // behavior), but a caller marking a DIFFERENT month than the one
+  // currently on screen (e.g. the all-months history list) passes this so
+  // the admin lands back where they were instead of jumping to that month.
+  const returnTo = String(formData.get("returnTo") || "").trim();
   if (!instructorId || !/^\d{4}-\d{2}$/.test(month)) {
     redirect("/admin/instructor-pay");
   }
@@ -1663,6 +1668,9 @@ export async function markInstructorPayout(formData: FormData) {
   });
 
   revalidatePath("/admin/instructor-pay");
+  if (returnTo.startsWith("/admin/instructor-pay")) {
+    redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}saved=1`);
+  }
   redirect(`/admin/instructor-pay?month=${month}&saved=1`);
 }
 
