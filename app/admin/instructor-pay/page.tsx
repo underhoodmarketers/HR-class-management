@@ -10,7 +10,6 @@ import {
   formatMoney,
   fromStudioTime,
   studioDateKey,
-  parseMonthKey,
   shiftMonthKey,
   monthLabel,
   INSTRUCTOR_RATE_CENTS,
@@ -38,10 +37,16 @@ export default async function InstructorPayPage({
 
   const now = new Date();
   const todayKey = studioDateKey(now);
-  const monthKey = parseMonthKey(searchParams.month, todayKey.slice(0, 7));
+  // Always the real current month — there's no more month navigation, and
+  // an old bookmarked/stale ?month= from before that was removed must not
+  // keep pinning the page to some past month.
+  const monthKey = todayKey.slice(0, 7);
   const monthStart = fromStudioTime(`${monthKey}-01T00:00`);
   const monthEnd = fromStudioTime(`${shiftMonthKey(monthKey, 1)}-01T00:00`);
   const groupBy: GroupBy = searchParams.view === "location" ? "location" : "instructor";
+  // Strip any leftover ?month= from links this page generates, so it
+  // doesn't linger in the URL bar either.
+  const cleanSearchParams = { ...searchParams, month: undefined };
 
   const [instructors, allLocations, sessions, payouts] = await Promise.all([
     db.query.users.findMany({
@@ -208,7 +213,7 @@ export default async function InstructorPayPage({
         {(["instructor", "location"] as const).map((v) => (
           <Link
             key={v}
-            href={buildUrl(searchParams, { view: v === "location" ? "location" : "", id: "" })}
+            href={buildUrl(cleanSearchParams, { view: v === "location" ? "location" : "", id: "" })}
             className={`rounded-full px-4 py-2 text-sm font-medium transition ${
               groupBy === v ? "bg-magenta text-white" : "bg-blush/40 text-ink/60 hover:bg-blush"
             }`}
@@ -227,7 +232,7 @@ export default async function InstructorPayPage({
               {rows.map((r) => (
                 <Link
                   key={r.instructor.id}
-                  href={buildUrl(searchParams, { id: String(r.instructor.id) })}
+                  href={buildUrl(cleanSearchParams, { id: String(r.instructor.id) })}
                   className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                     r.instructor.id === activeRow.instructor.id
                       ? "bg-magenta text-white"
@@ -251,7 +256,7 @@ export default async function InstructorPayPage({
               monthKey={monthKey}
               now={now}
               showLocation
-              returnTo={buildUrl(searchParams, {})}
+              returnTo={buildUrl(cleanSearchParams, {})}
             />
             <InstructorHistory
               name={activeRow.instructor.name}
@@ -259,7 +264,7 @@ export default async function InstructorPayPage({
               lifetimeTotalCents={lifetimeTotalCents}
               lifetimePaidCents={lifetimePaidCents}
               instructorId={activeRow.instructor.id}
-              returnTo={buildUrl(searchParams, {})}
+              returnTo={buildUrl(cleanSearchParams, {})}
               currentMonthKey={monthKey}
             />
           </>
@@ -276,7 +281,7 @@ export default async function InstructorPayPage({
                 {locationGroups.map((g) => (
                   <Link
                     key={g.location.id}
-                    href={buildUrl(searchParams, { view: "location", id: String(g.location.id) })}
+                    href={buildUrl(cleanSearchParams, { view: "location", id: String(g.location.id) })}
                     className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                       g.location.id === active.location.id
                         ? "bg-magenta text-white"
