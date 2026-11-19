@@ -17,9 +17,12 @@ export type LeaderboardRow = {
 // already passed — there's no separate check-in step in this app.
 //
 // Each person's percentage is their combined attendance (any studio) as a
-// share of the classes held this window at their own preferred studio(s) —
-// so someone at a small studio with perfect attendance can rank above a
-// high-volume attendee at a busier one.
+// share of the classes held this window at their own studio(s) — their
+// declared preferred studio(s), plus any studio they actually attended a
+// class at (so a drop-in visit to a studio outside their usual preference
+// still counts toward the denominator too, instead of inflating the rate
+// past 100%) — so someone at a small studio with perfect attendance can
+// rank above a high-volume attendee at a busier one.
 async function computeLeaderboard(start: Date, end: Date): Promise<LeaderboardRow[]> {
   const now = new Date();
   const cappedEnd = end < now ? end : now;
@@ -54,16 +57,22 @@ async function computeLeaderboard(start: Date, end: Date): Promise<LeaderboardRo
   }
 
   const attendedByUser = new Map<number, number>();
+  const attendedLocationsByUser = new Map<number, Set<number>>();
   for (const s of sessionsAtActiveLocations) {
     for (const b of s.bookings) {
       if (b.status !== "booked") continue;
       attendedByUser.set(b.userId, (attendedByUser.get(b.userId) ?? 0) + 1);
+      const locs = attendedLocationsByUser.get(b.userId) ?? new Set<number>();
+      locs.add(s.locationId);
+      attendedLocationsByUser.set(b.userId, locs);
     }
   }
 
   return customers
     .map((c) => {
-      const locIds = [...new Set(c.locations.map((l) => l.locationId))].filter((id) =>
+      const preferredIds = c.locations.map((l) => l.locationId);
+      const attendedIds = attendedLocationsByUser.get(c.id) ?? new Set<number>();
+      const locIds = [...new Set([...preferredIds, ...attendedIds])].filter((id) =>
         activeLocationIds.has(id)
       );
       const possible = locIds.reduce((sum, id) => sum + (classesByLocation.get(id) ?? 0), 0);
