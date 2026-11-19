@@ -41,8 +41,6 @@ export default async function InstructorPayPage({
   const monthKey = parseMonthKey(searchParams.month, todayKey.slice(0, 7));
   const monthStart = fromStudioTime(`${monthKey}-01T00:00`);
   const monthEnd = fromStudioTime(`${shiftMonthKey(monthKey, 1)}-01T00:00`);
-  const prevMonth = shiftMonthKey(monthKey, -1);
-  const nextMonth = shiftMonthKey(monthKey, 1);
   const groupBy: GroupBy = searchParams.view === "location" ? "location" : "instructor";
 
   const [instructors, allLocations, sessions, payouts] = await Promise.all([
@@ -186,29 +184,7 @@ export default async function InstructorPayPage({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-600">{monthLabel(monthKey)}</h2>
-        <div className="flex items-center gap-1.5">
-          <Link
-            href={buildUrl(searchParams, { month: prevMonth })}
-            className="btn-ghost px-3 py-1.5 text-xs"
-          >
-            ‹
-          </Link>
-          <Link
-            href={buildUrl(searchParams, { month: todayKey.slice(0, 7) })}
-            className="btn-ghost px-3 py-1.5 text-xs"
-          >
-            This month
-          </Link>
-          <Link
-            href={buildUrl(searchParams, { month: nextMonth })}
-            className="btn-ghost px-3 py-1.5 text-xs"
-          >
-            ›
-          </Link>
-        </div>
-      </div>
+      <h2 className="font-600">{monthLabel(monthKey)}</h2>
 
       <div className="card p-5">
         <p className="text-sm text-ink/50">Total owed this month</p>
