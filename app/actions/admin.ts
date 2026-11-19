@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, sql, count, and, lt, gte, inArray, desc } from "drizzle-orm";
+import { eq, sql, count, and, lt, gte, inArray, desc, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   bookings,
@@ -42,6 +42,7 @@ import {
   fromStudioTime,
   addStudioWeeks,
   addStudioDays,
+  studioDateKey,
   studioWeekday,
   studioClock,
   withStudioClock,
@@ -1215,10 +1216,11 @@ export async function unfreezeMembership(formData: FormData) {
  */
 /**
  * Creates the Stripe coupon + promotion code for a trial credit, registers
- * it in our own promoCodes table (scoped to just this customer, one use —
- * see resolvePromoCode, which checks that table before ever consulting
- * Stripe), and stamps it onto the membership. Shared by issuing a code for
- * the first time and by void-and-regenerate.
+ * it in our own promoCodes table (scoped to just this customer, one use,
+ * good toward any package except another Drop-In, and expiring at the end
+ * of the day it's issued — see resolvePromoCode, which checks all of that
+ * before ever consulting Stripe), and stamps it onto the membership.
+ * Shared by issuing a code for the first time and by void-and-regenerate.
  */
 async function createTrialCreditCode(
   customerId: number,
@@ -1226,6 +1228,9 @@ async function createTrialCreditCode(
   amountOffCents: number
 ): Promise<string> {
   const code = `TRIAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  // Same calendar day it's issued, end of day, studio-local time.
+  const expiresAt = fromStudioTime(`${studioDateKey(new Date())}T23:59`);
+  const expiresAtUnix = Math.floor(expiresAt.getTime() / 1000);
   let couponId: string;
   let promotionCodeId: string;
   try {
@@ -1241,6 +1246,7 @@ async function createTrialCreditCode(
       code,
       active: true,
       max_redemptions: 1,
+      expires_at: expiresAtUnix,
     });
     promotionCodeId = promotionCode.id;
   } catch (err) {
@@ -1257,6 +1263,18 @@ async function createTrialCreditCode(
     .values({ code, stripeCouponId: couponId, stripePromotionCodeId: promotionCodeId, maxUsesPerCustomer: 1 })
     .returning();
   await db.insert(promoCodeCustomers).values({ promoCodeId: promoCode.id, userId: customerId });
+
+  // Good toward any real package — not another Drop-In, which would just
+  // give them another free trial instead of converting them.
+  const eligiblePackages = await db.query.packages.findMany({
+    where: and(eq(packages.active, true), ne(packages.name, DROP_IN_PACKAGE_NAME)),
+    columns: { id: true },
+  });
+  if (eligiblePackages.length > 0) {
+    await db
+      .insert(promoCodePackages)
+      .values(eligiblePackages.map((p) => ({ promoCodeId: promoCode.id, packageId: p.id })));
+  }
 
   await db
     .update(memberships)

@@ -67,6 +67,9 @@ export async function resolvePromoCode(
     return { ok: false, error: "That code isn't valid." };
   }
   if (!promotionCode.active) return { ok: false, error: "That code has expired or is no longer active." };
+  if (promotionCode.expires_at != null && promotionCode.expires_at * 1000 <= Date.now()) {
+    return { ok: false, error: "That code has expired." };
+  }
   if (promotionCode.max_redemptions != null && promotionCode.times_redeemed >= promotionCode.max_redemptions) {
     return { ok: false, error: "That code has already been fully redeemed." };
   }
