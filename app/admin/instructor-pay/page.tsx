@@ -100,6 +100,13 @@ export default async function InstructorPayPage({
     totalCents: number;
     status: "due" | "paid";
     comments: string | null;
+    sessions: {
+      id: number;
+      startsAt: Date;
+      canceled: boolean;
+      classType: { name: string };
+      location: { name: string };
+    }[];
   };
   let history: MonthHistory[] = [];
   let lifetimeTotalCents = 0;
@@ -109,7 +116,7 @@ export default async function InstructorPayPage({
     const [allSessionsRaw, allPayoutsForInstructor] = await Promise.all([
       db.query.classSessions.findMany({
         where: lt(classSessions.startsAt, now),
-        columns: { startsAt: true, canceled: true, assignedInstructorId: true, instructor: true },
+        with: { classType: true, location: true },
       }),
       db.query.instructorPayouts.findMany({
         where: eq(instructorPayouts.instructorId, activeRow.instructor.id),
@@ -118,27 +125,33 @@ export default async function InstructorPayPage({
 
     const mine = allSessionsRaw.filter(
       (s) =>
-        !s.canceled &&
-        (s.assignedInstructorId === activeRow.instructor.id ||
-          (!s.assignedInstructorId &&
-            s.instructor?.trim().toLowerCase() === activeRow.instructor.name.trim().toLowerCase()))
+        s.assignedInstructorId === activeRow.instructor.id ||
+        (!s.assignedInstructorId &&
+          s.instructor?.trim().toLowerCase() === activeRow.instructor.name.trim().toLowerCase())
     );
 
-    const countByMonth = new Map<string, number>();
+    const sessionsByMonth = new Map<string, typeof mine>();
     for (const s of mine) {
       const mk = studioDateKey(s.startsAt).slice(0, 7);
-      countByMonth.set(mk, (countByMonth.get(mk) ?? 0) + 1);
+      const arr = sessionsByMonth.get(mk);
+      if (arr) arr.push(s);
+      else sessionsByMonth.set(mk, [s]);
     }
     const payoutByMonth = new Map(allPayoutsForInstructor.map((p) => [p.month, p]));
 
-    history = Array.from(countByMonth.entries())
-      .map(([mk, completedCount]) => ({
-        monthKey: mk,
-        completedCount,
-        totalCents: completedCount * RATE_CENTS,
-        status: (payoutByMonth.get(mk)?.status === "paid" ? "paid" : "due") as "due" | "paid",
-        comments: payoutByMonth.get(mk)?.comments ?? null,
-      }))
+    history = Array.from(sessionsByMonth.entries())
+      .map(([mk, monthSessions]) => {
+        const sorted = monthSessions.slice().sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+        const completedCount = sorted.filter((s) => !s.canceled).length;
+        return {
+          monthKey: mk,
+          completedCount,
+          totalCents: completedCount * RATE_CENTS,
+          status: (payoutByMonth.get(mk)?.status === "paid" ? "paid" : "due") as "due" | "paid",
+          comments: payoutByMonth.get(mk)?.comments ?? null,
+          sessions: sorted,
+        };
+      })
       .sort((a, b) => (a.monthKey < b.monthKey ? 1 : -1));
 
     lifetimeTotalCents = history.reduce((sum, m) => sum + m.totalCents, 0);
@@ -408,6 +421,13 @@ function InstructorHistory({
     totalCents: number;
     status: "due" | "paid";
     comments: string | null;
+    sessions: {
+      id: number;
+      startsAt: Date;
+      canceled: boolean;
+      classType: { name: string };
+      location: { name: string };
+    }[];
   }[];
   lifetimeTotalCents: number;
   lifetimePaidCents: number;
@@ -441,46 +461,68 @@ function InstructorHistory({
       {history.length === 0 ? (
         <p className="text-sm text-ink/40">No completed classes yet.</p>
       ) : (
-        <ul className="divide-y divide-ink/5 text-sm">
+        <div className="divide-y divide-ink/5 text-sm">
           {history.map((m) => (
-            <li key={m.monthKey} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-              <div>
-                <span className="font-500">{monthLabel(m.monthKey)}</span>
-                <span className="ml-2 text-ink/50">
-                  {m.completedCount} class{m.completedCount === 1 ? "" : "es"} · {formatMoney(m.totalCents)}
-                </span>
-                {m.monthKey === currentMonthKey ? (
-                  <span className="ml-2 text-xs text-ink/30">(viewing above)</span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`badge ${
-                    m.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {m.status === "paid" ? "Paid" : "Due"}
-                </span>
-                <form action={markInstructorPayout}>
-                  <input type="hidden" name="instructorId" value={instructorId} />
-                  <input type="hidden" name="month" value={m.monthKey} />
-                  <input type="hidden" name="comments" value={m.comments ?? ""} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <button
-                    type="submit"
-                    name="status"
-                    value={m.status === "paid" ? "due" : "paid"}
-                    className={
-                      m.status === "paid" ? "btn-subtle px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"
-                    }
+            <details key={m.monthKey} className="group py-2.5">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <span className="mr-1.5 inline-block text-ink/30 transition-transform group-open:rotate-90">
+                    ›
+                  </span>
+                  <span className="font-500">{monthLabel(m.monthKey)}</span>
+                  <span className="ml-2 text-ink/50">
+                    {m.completedCount} class{m.completedCount === 1 ? "" : "es"} · {formatMoney(m.totalCents)}
+                  </span>
+                  {m.monthKey === currentMonthKey ? (
+                    <span className="ml-2 text-xs text-ink/30">(viewing above)</span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`badge ${
+                      m.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                    }`}
                   >
-                    {m.status === "paid" ? "Mark due" : "Mark paid"}
-                  </button>
-                </form>
-              </div>
-            </li>
+                    {m.status === "paid" ? "Paid" : "Due"}
+                  </span>
+                  <form action={markInstructorPayout}>
+                    <input type="hidden" name="instructorId" value={instructorId} />
+                    <input type="hidden" name="month" value={m.monthKey} />
+                    <input type="hidden" name="comments" value={m.comments ?? ""} />
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <button
+                      type="submit"
+                      name="status"
+                      value={m.status === "paid" ? "due" : "paid"}
+                      className={
+                        m.status === "paid" ? "btn-subtle px-3 py-1 text-xs" : "btn-primary px-3 py-1 text-xs"
+                      }
+                    >
+                      {m.status === "paid" ? "Mark due" : "Mark paid"}
+                    </button>
+                  </form>
+                </div>
+              </summary>
+              <ul className="mt-2 space-y-1.5 border-l border-ink/10 pl-4">
+                {m.sessions.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between text-ink/70">
+                    <span>
+                      {s.classType.name} · {s.location.name}
+                    </span>
+                    <span className="flex items-center gap-3 text-ink/50">
+                      {formatDay(s.startsAt)} {formatTime(s.startsAt)}
+                      {s.canceled ? (
+                        <span className="badge bg-blush text-magenta-deep">Canceled</span>
+                      ) : (
+                        <span className="text-xs text-ink/40">{formatMoney(RATE_CENTS)}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
