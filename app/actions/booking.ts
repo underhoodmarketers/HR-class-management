@@ -99,7 +99,13 @@ export async function bookClass(formData: FormData) {
   } else if (membership.creditsRemaining !== null) {
     await db
       .update(memberships)
-      .set({ creditsRemaining: sql`${memberships.creditsRemaining} - 1` })
+      .set({
+        creditsRemaining: sql`${memberships.creditsRemaining} - 1`,
+        // A Drop-In is a single-use credit — once it's drawn on, void the
+        // membership immediately rather than leaving it sitting "active"
+        // with zero credits until its 30-day window happens to pass.
+        ...(isDropIn ? { status: "expired" } : {}),
+      })
       .where(eq(memberships.id, membership.id));
   }
 
@@ -127,7 +133,7 @@ export async function cancelBooking(formData: FormData) {
 
   const booking = await db.query.bookings.findFirst({
     where: and(eq(bookings.id, bookingId), eq(bookings.userId, session.userId)),
-    with: { session: true },
+    with: { session: true, membership: { with: { package: true } } },
   });
   if (!booking || booking.status !== "booked") return;
   // Once the class has actually happened, it's an attendance record, not a
@@ -148,9 +154,15 @@ export async function cancelBooking(formData: FormData) {
       .set({ creditsOwed: sql`GREATEST(0, ${users.creditsOwed} - 1)` })
       .where(eq(users.id, session.userId));
   } else if (booking.membershipId) {
+    const isDropIn = booking.membership?.package.name === DROP_IN_PACKAGE_NAME;
     await db
       .update(memberships)
-      .set({ creditsRemaining: sql`${memberships.creditsRemaining} + 1` })
+      .set({
+        creditsRemaining: sql`${memberships.creditsRemaining} + 1`,
+        // Undo the void from bookClass — a canceled booking gives the
+        // Drop-In its one credit back, so it needs to be usable again.
+        ...(isDropIn ? { status: "active" } : {}),
+      })
       .where(
         and(
           eq(memberships.id, booking.membershipId),
